@@ -1274,6 +1274,132 @@ struct kvm_s390_ucas_mapping {
 /* Available with KVM_CAP_X86_SMM */
 #define KVM_SMI                   _IO(KVMIO,   0xb7)
 
+/* Secure Encrypted Virtualization mode */
+enum sev_cmd {
+	KVM_SEV_LAUNCH_START = 0,
+	KVM_SEV_LAUNCH_UPDATE,
+	KVM_SEV_LAUNCH_FINISH,
+	KVM_SEV_GUEST_STATUS,
+	KVM_SEV_DBG_DECRYPT,
+	KVM_SEV_DBG_ENCRYPT,
+	KVM_SEV_RECEIVE_START,
+	KVM_SEV_RECEIVE_UPDATE,
+	KVM_SEV_RECEIVE_FINISH,
+	KVM_SEV_SEND_START,
+	KVM_SEV_SEND_UPDATE,
+	KVM_SEV_SEND_FINISH,
+	KVM_SEV_API_VERSION,
+	KVM_SEV_NR_MAX,
+};
+
+struct kvm_sev_issue_cmd {
+	__u32 psp_fd;
+	__u32 cmd;
+	__u64 opaque;
+	__u32 ret_code;
+};
+
+struct kvm_sev_launch_start {
+	__u32 handle;
+	__u32 flags;
+	__u32 policy;
+	__u8 nonce[16];
+	__u8 dh_pub_qx[32];
+	__u8 dh_pub_qy[32];
+};
+
+struct kvm_sev_launch_update {
+	__u64	address;
+	__u32	length;
+};
+
+struct kvm_sev_launch_finish {
+	__u32 vcpu_count;
+	__u32 vcpu_length;
+	__u64 vcpu_mask_addr;
+	__u32 vcpu_mask_length;
+	__u8  measurement[32];
+};
+
+struct kvm_sev_guest_status {
+	__u32 policy;
+	__u32 state;
+};
+
+struct kvm_sev_dbg_decrypt {
+	__u64 src_addr;
+	__u64 dst_addr;
+	__u32 length;
+};
+
+struct kvm_sev_dbg_encrypt {
+	__u64 src_addr;
+	__u64 dst_addr;
+	__u32 length;
+};
+
+struct kvm_sev_receive_start {
+	__u32 handle;
+	__u32 flags;
+	__u32 policy;
+	__u8 policy_meas[32];
+	__u8 wrapped_tek[24];
+	__u8 wrapped_tik[24];
+	__u8 ten[16];
+	__u8 dh_pub_qx[32];
+	__u8 dh_pub_qy[32];
+	__u8 nonce[16];
+};
+
+struct kvm_sev_receive_update {
+	__u8 iv[16];
+	__u64 address;
+	__u32 length;
+};
+
+struct kvm_sev_receive_finish {
+	__u8 measurement[32];
+};
+
+struct kvm_sev_send_start {
+	__u8 nonce[16];
+	__u32 policy;
+	__u8 policy_meas[32];
+	__u8 wrapped_tek[24];
+	__u8 wrapped_tik[24];
+	__u8 ten[16];
+	__u8 iv[16];
+	__u32 flags;
+	__u8 api_major;
+	__u8 api_minor;
+	__u32 serial;
+	__u8 dh_pub_qx[32];
+	__u8 dh_pub_qy[32];
+	__u8 pek_sig_r[32];
+	__u8 pek_sig_s[32];
+	__u8 cek_sig_r[32];
+	__u8 cek_sig_s[32];
+	__u8 cek_pub_qx[32];
+	__u8 cek_pub_qy[32];
+	__u8 ask_sig_r[32];
+	__u8 ask_sig_s[32];
+	__u32 ncerts;
+	__u32 cert_length;
+	__u64 certs_addr;
+};
+
+struct kvm_sev_send_update {
+	__u32 length;
+	__u64 src_addr;
+	__u64 dst_addr;
+};
+
+struct kvm_sev_send_finish {
+	__u8 measurement[32];
+};
+
+#define KVM_SEV_ISSUE_CMD	_IOWR(KVMIO, 0xb8, struct kvm_sev_issue_cmd)
+
 #define KVM_DEV_ASSIGN_ENABLE_IOMMU	(1 << 0)
 #define KVM_DEV_ASSIGN_PCI_2_3		(1 << 1)
 #define KVM_DEV_ASSIGN_MASK_INTX	(1 << 2)

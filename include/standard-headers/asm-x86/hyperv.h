@@ -3,6 +3,8 @@
 
 #include "standard-headers/linux/types.h"
 
+#ifndef __ASSEMBLY__
+
 /*
  * The below CPUID leaves are present if VersionAndFeatures.HypervisorPresent
  * is set by CPUID(HvCpuIdFunctionVersionAndFeatures).
@@ -362,5 +364,7 @@ struct hv_timer_message_payload {
 #define HV_STIMER_LAZY			(1ULL << 2)
 #define HV_STIMER_AUTOENABLE		(1ULL << 3)
 #define HV_STIMER_SINT(config)		(uint8_t)(((config) >> 16) & 0x0F)
+
+#endif	/* __ASSEMBLY__ */
 
 #endif
