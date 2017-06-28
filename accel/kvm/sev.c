@@ -53,6 +53,42 @@ qsev_guest_finalize(Object *obj)
 {
 }
 
+static struct kvm_sev_guest_status *sev_get_status(int *error)
+{
+    struct kvm_sev_guest_status *status;
+
+    status = g_malloc(sizeof(*status));
+    if (!status) {
+        return NULL;
+    }
+
+    if (sev_ioctl(KVM_SEV_GUEST_STATUS, status, error)) {
+        goto err;
+    }
+
+    return status;
+err:
+    g_free(status);
+    return NULL;
+}
+
+static int
+sev_get_current_state(SEVState *s)
+{
+    int error;
+    int ret = SEV_STATE_INVALID;
+    struct kvm_sev_guest_status *status;
+
+    status = sev_get_status(&error);
+    if (!status) {
+        return ret;
+    }
+
+    ret = status->state;
+    g_free(status);
+    return ret;
+}
+
 static char *
 qsev_guest_get_sev_device(Object *obj, Error **errp)
 {
@@ -360,6 +396,20 @@ sev_guest_init(const char *id)
 err:
     g_free(s);
     return NULL;
+}
+
+bool
+sev_enabled(void *handle)
+{
+    if (!handle) {
+        return false;
+    }
+
+    if (sev_get_current_state((SEVState *)handle) != SEV_STATE_INVALID) {
+        return true;
+    }
+
+    return false;
 }
 
 void

@@ -1798,6 +1798,7 @@ static int kvm_init(MachineState *ms)
             fprintf(stderr, "failed to initialize SEV guest\n");
             goto err;
         }
+        kvm_state->memcrypt_enabled = sev_enabled;
         kvm_state->memcrypt_debug_ops = sev_set_debug_ops;
     }
 

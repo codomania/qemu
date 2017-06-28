@@ -85,6 +85,16 @@ struct SEVState {
 
 typedef struct SEVState SEVState;
 
+enum {
+    SEV_STATE_INVALID = 0,
+    SEV_STATE_LUPDATE,
+    SEV_STATE_SECRET,
+    SEV_STATE_RUNNING,
+    SEV_STATE_SENDING,
+    SEV_STATE_RECEIVING,
+    SEV_STATE_MAX
+};
+
 bool sev_enabled(void *handle);
 void *sev_guest_init(const char *keyid);
 void sev_set_debug_ops(void *handle, MemoryRegion *mr);
