@@ -85,6 +85,8 @@ Enables or disables NVDIMM support. The default is off.
 @item s390-squash-mcss=on|off
 Enables or disables squashing subchannels into the default css.
 The default is off.
+@item memory-encryption=@var
+Memory encryption object to use. The default is none.
 @end table
 ETEXI
 
