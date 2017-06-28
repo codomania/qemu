@@ -98,6 +98,6 @@ enum {
 bool sev_enabled(void *handle);
 void *sev_guest_init(const char *keyid);
 void sev_set_debug_ops(void *handle, MemoryRegion *mr);
-
+int sev_encrypt_launch_buffer(void *handle, uint8_t *ptr, uint64_t len);
 #endif
 

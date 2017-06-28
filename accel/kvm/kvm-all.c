@@ -1800,6 +1800,7 @@ static int kvm_init(MachineState *ms)
         }
         kvm_state->memcrypt_enabled = sev_enabled;
         kvm_state->memcrypt_debug_ops = sev_set_debug_ops;
+        kvm_state->encrypt_data = sev_encrypt_launch_buffer;
     }
 
     ret = kvm_arch_init(ms, s);
