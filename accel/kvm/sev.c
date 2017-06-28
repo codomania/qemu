@@ -33,6 +33,21 @@
 static MemoryRegionRAMReadWriteOps sev_ops;
 static int sev_fd;
 
+static int
+sev_ioctl(int cmd, void *data, int *error)
+{
+    int r;
+    struct kvm_sev_cmd input;
+
+    input.id = cmd;
+    input.sev_fd = sev_fd;
+    input.data = (__u64)data;
+
+    r = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_OP, &input);
+    *error = input.error;
+    return r;
+}
+
 static void
 qsev_guest_finalize(Object *obj)
 {
@@ -234,6 +249,63 @@ static const TypeInfo qsev_launch_info = {
 };
 
 static int
+sev_launch_start(QSevGuestInfo *sev)
+{
+    gsize sz;
+    int ret = 1;
+    Object *obj;
+    int fw_error;
+    GError *error = NULL;
+    QSevLaunchInfo *launch;
+    struct kvm_sev_launch_start *start;
+    gchar *session = NULL, *dh_cert = NULL;
+
+    obj = object_property_get_link(OBJECT(sev), "launch", &error_abort);
+    if (!obj) {
+        fprintf(stderr, "sev-launch-info object not found\n");
+        return 1;
+    }
+
+    launch = QSEV_LAUNCH_INFO(obj);
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        return 1;
+    }
+
+    start->policy = object_property_get_int(OBJECT(sev), "policy",&error_abort);
+    start->handle = object_property_get_int(OBJECT(sev), "handle",&error_abort);
+
+    if (launch->session_file) {
+        if (g_file_get_contents(launch->session_file, &session, &sz, &error)) {
+            start->session_data = (unsigned long)session;
+            start->session_length = sz;
+        }
+    }
+
+    if (launch->dh_cert_file) {
+        if (g_file_get_contents(launch->dh_cert_file, &dh_cert, &sz, &error)) {
+            start->dh_cert_data = (unsigned long)session;
+            start->dh_cert_length = sz;
+        }
+    }
+
+    ret = sev_ioctl(KVM_SEV_LAUNCH_START, start, &fw_error);
+    if (ret < 0) {
+        fprintf(stderr, "failed LAUNCH_START %d (%#x)\n", ret, fw_error);
+        goto err;
+    }
+
+    object_property_set_int(OBJECT(sev), start->handle, "handle", &error_abort);
+    DPRINTF("SEV: LAUNCH_START\n");
+err:
+    g_free(start);
+    g_free(session);
+    g_free(dh_cert);
+    return ret;
+}
+
+static int
 sev_mem_write(uint8_t *dst, const uint8_t *src, uint32_t len, MemTxAttrs attrs)
 {
     return 0;
@@ -248,6 +320,7 @@ sev_mem_read(uint8_t *dst, const uint8_t *src, uint32_t len, MemTxAttrs attrs)
 void *
 sev_guest_init(const char *id)
 {
+    Object *obj;
     SEVState *s;
     char *sev_device_name;
 
@@ -271,6 +344,17 @@ sev_guest_init(const char *id)
         goto err;
     }
     g_free(sev_device_name);
+
+    obj = object_resolve_path_type("", TYPE_QSEV_LAUNCH_INFO, NULL);
+    if (obj) {
+        object_property_set_link(OBJECT(s->sev_info), obj, "launch",
+            &error_abort);
+    }
+
+    /* create launch context */
+    if (sev_launch_start(s->sev_info)) {
+        goto err;
+    }
 
     return s;
 err:
