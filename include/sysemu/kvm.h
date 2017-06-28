@@ -227,6 +227,39 @@ int kvm_init_vcpu(CPUState *cpu);
 int kvm_cpu_exec(CPUState *cpu);
 int kvm_destroy_vcpu(CPUState *cpu);
 
+/**
+ * kvm_memcrypt_enabled - return boolean indicating whether memory encryption
+ *                        is enabled
+ * Returns: 1 memory encryption is enabled
+ *          0 memory encryption is disabled
+ */
+bool kvm_memcrypt_enabled(void);
+
+/**
+ * kvm_memcrypt_set_debug_ops - use ram_debug_ops to access the memory region
+ *
+ * When memory encryption is enabled, guest memory access should be performed
+ * using memory encryption apis. kvm_memcrypt_set_debug_ops() will set
+ * mr->ram_debug_ops to indicate that any memory access for this memory region
+ * should go through the encryption APIs.
+ */
+void kvm_memcrypt_set_debug_ops(MemoryRegion *mr);
+
+/**
+ * kvm_memcrypt_encrypt_data: encrypt the data in-place
+ *
+ * Returns: 0 on success and 1 on failure
+ */
+int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len);
+
+/**
+ * kvm_memcrypt_get_handle - return memory encryption handle
+ *
+ * Returns: If memory encryption is enabled then return encryption handle
+ *          otherwise NULL.
+ */
+void *kvm_memcrypt_get_handle(void);
+
 #ifdef NEED_CPU_H
 #include "cpu.h"
 

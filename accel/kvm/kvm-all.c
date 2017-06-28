@@ -103,6 +103,13 @@ struct KVMState
 #endif
     KVMMemoryListener memory_listener;
     QLIST_HEAD(, KVMParkedVcpu) kvm_parked_vcpus;
+
+    /* memory encryption support */
+    void *ehandle;
+    bool (*memcrypt_enabled)(void *ehandle);
+    int (*encrypt_data)(void *ehandle, uint8_t *dst, uint64_t len);
+    void (*memcrypt_debug_ops)(void *ehandle, MemoryRegion *mr);
+    char* (*launch_measurement)(void *ehandle);
 };
 
 KVMState *kvm_state;
@@ -129,6 +136,35 @@ static const KVMCapabilityInfo kvm_required_capabilites[] = {
     KVM_CAP_INFO(DESTROY_MEMORY_REGION_WORKS),
     KVM_CAP_LAST_INFO
 };
+
+bool kvm_memcrypt_enabled(void)
+{
+    if (kvm_state->memcrypt_enabled) {
+        return kvm_state->memcrypt_enabled(kvm_state->ehandle);
+    }
+    return false;
+}
+
+int kvm_memcrypt_encrypt_data(uint8_t *dst, uint64_t len)
+{
+    if (kvm_state->encrypt_data) {
+        return kvm_state->encrypt_data(kvm_state->ehandle, dst, len);
+    }
+
+    return 1;
+}
+
+void kvm_memcrypt_set_debug_ops(MemoryRegion *mr)
+{
+    if (kvm_state->memcrypt_debug_ops) {
+        return kvm_state->memcrypt_debug_ops(kvm_state->ehandle, mr);
+    }
+}
+
+void *kvm_memcrypt_get_handle(void)
+{
+    return kvm_state->ehandle;
+}
 
 int kvm_get_max_memslots(void)
 {
