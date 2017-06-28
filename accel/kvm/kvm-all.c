@@ -38,6 +38,7 @@
 #include "qemu/event_notifier.h"
 #include "trace.h"
 #include "hw/irq.h"
+#include "sysemu/sev.h"
 
 #include "hw/boards.h"
 
@@ -1786,6 +1787,19 @@ static int kvm_init(MachineState *ms)
         (kvm_check_extension(s, KVM_CAP_IOEVENTFD_ANY_LENGTH) > 0);
 
     kvm_state = s;
+
+    /*
+     * If memory encryption id is specified then initialize then memory
+     * encryption context.
+     */
+    if (ms->memory_encryption) {
+        kvm_state->ehandle = sev_guest_init(ms->memory_encryption);
+        if (!kvm_state->ehandle) {
+            fprintf(stderr, "failed to initialize SEV guest\n");
+            goto err;
+        }
+        kvm_state->memcrypt_debug_ops = sev_set_debug_ops;
+    }
 
     ret = kvm_arch_init(ms, s);
     if (ret < 0) {

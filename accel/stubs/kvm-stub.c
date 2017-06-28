@@ -14,6 +14,7 @@
 #include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/kvm.h"
+#include "sysemu/sev.h"
 
 #ifndef CONFIG_USER_ONLY
 #include "hw/pci/msi.h"
@@ -106,6 +107,11 @@ int kvm_on_sigbus(int code, void *addr)
 }
 
 bool kvm_memcrypt_enabled(void)
+{
+    return false;
+}
+
+bool sev_enabled(void)
 {
     return false;
 }

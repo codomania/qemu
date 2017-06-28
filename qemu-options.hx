@@ -4396,6 +4396,54 @@ contents of @code{iv.b64} to the second secret
          data=$SECRET,iv=$(<iv.b64)
 @end example
 
+@item -object sev-guest,id=@var{id},sev-device=@var{string}[,policy=@var{policy},handle=@var{handle}]
+
+Create a Secure Encrypted Virtualization (SEV) guest object, which can be used
+to provide the guest memory encryption support on AMD processors.
+
+The @option{sev-device} provides the device file to use for communicating with the
+SEV firmware running inside AMD Secure Processor. The default device is '/dev/sev1'.
+If hardware supports memory encryption then /dev/sevX devices are created by ccp driver
+(drivers/crypto/ccp/ccp.ko).
+
+The @option{policy} provides the guest policy to be enforced by the SEV firmware and
+restrict what configuration and operational commands can be performed on this guest
+by the hypervisor. The policy should be provided by the guest owner and is bound to
+the guest and cannot be changed throughout the lifetime of the guest. The default is 0.
+
+If guest @option{policy} allows sharing the key with another SEV guest then @option{handle}
+can be use to provide handle of the guest from which to share the key.
+
+e.g to launch a SEV guest
+@example
+ # $QEMU \
+     ......
+     -object sev-guest,id=sev0 \
+     -machine ...,memory-encryption=sev0
+     .....
+
+@end example
+
+@item -object sev-launch-info,id=@var{id}[,dh-cert-file=<file>,session-file=<file>]
+
+Create a SEV launch info object, which can be used to pass various parameters used
+while creating encryption context for the SEV guest. The id parameter is a unique
+ID that should be used in sev-guest object when creating SEV guest.
+
+The @option{dh-cert-file} and @option{session-file} provides the guest owner DH
+certificate and guest session parameters used for establishing a cryptographic
+session with the guest owner to negotiate keys used for attestation. If DH
+certificate and session parameters are not specified then guest launch will use
+0h for both TEK (transport encryption key) and TIK (transport integrity key).
+
+e.g to launch SEV guest from unencrypted boot images
+@example
+ # $QEMU \
+     -object sev-launch-info,id=launch0\
+     -object sev-guest,id=sev0 \
+     -machine ...,memory-encryption=sev0
+@end example
+
 @end table
 
 ETEXI
