@@ -535,6 +535,45 @@ static void sev_vm_state_change(void *opaque, int running, RunState state)
     }
 }
 
+static void
+sev_ram_block_added(RAMBlockNotifier *n, void *host, size_t size)
+{
+    int r;
+    struct kvm_memory_encrypt_ram ram;
+
+    ram.address = (__u64)host;
+    ram.size = size;
+
+    r = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_REGISTER_RAM, &ram);
+    if (r) {
+        fprintf(stderr, "SEV: failed to register RAM (%#llx+%#llx)\n",
+                ram.address, ram.size);
+        return;
+    }
+}
+
+static void
+sev_ram_block_removed(RAMBlockNotifier *n, void *host, size_t size)
+{
+    int r;
+    struct kvm_memory_encrypt_ram ram;
+
+    ram.address = (__u64)host;
+    ram.size = size;
+
+    r = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_UNREGISTER_RAM, &ram);
+    if (r) {
+        fprintf(stderr, "SEV: failed to unregister RAM (%#llx+%#llx)\n",
+                ram.address, ram.size);
+        return;
+    }
+}
+
+static struct RAMBlockNotifier sev_ram_notifier = {
+    .ram_block_added = sev_ram_block_added,
+    .ram_block_removed = sev_ram_block_removed,
+};
+
 void *
 sev_guest_init(const char *id)
 {
@@ -575,6 +614,7 @@ sev_guest_init(const char *id)
     }
 
     qemu_add_vm_change_state_handler(sev_vm_state_change, s);
+    ram_block_notifier_add(&sev_ram_notifier);
     return s;
 err:
     g_free(s);
