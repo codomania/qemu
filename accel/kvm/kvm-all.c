@@ -1693,6 +1693,7 @@ static int kvm_init(MachineState *ms)
         if (!kvm_state->memcrypt_handle) {
             goto err;
         }
+        kvm_state->memcrypt_create_context = sev_create_context;
     }
 
     ret = kvm_arch_init(ms, s);

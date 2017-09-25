@@ -22,6 +22,15 @@
 #define DEFAULT_GUEST_POLICY    0x1 /* disable debug */
 #define DEFAULT_SEV_DEVICE      "/dev/sev"
 
+#define DEBUG_SEV
+#ifdef DEBUG_SEV
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
+
 static int sev_fd;
 
 #define SEV_FW_MAX_ERROR      0x17
@@ -282,6 +291,76 @@ lookup_sev_guest_info(const char *id)
     return info;
 }
 
+static int
+sev_read_file_base64(const char *filename, guchar **data, gsize *len)
+{
+    gsize sz;
+    gchar *base64;
+    GError *error = NULL;
+
+    if (g_file_get_contents(filename, &base64, &sz, &error)) {
+        error_report("failed to read '%s' (%s)", filename, error->message);
+        return -1;
+    }
+
+    *data = g_base64_decode(base64, len);
+    return 0;
+}
+
+static void
+sev_launch_start(SEVState *s)
+{
+    gsize sz;
+    int ret = 1;
+    int fw_error;
+    QSevGuestInfo *sev = s->sev_info;
+    struct kvm_sev_launch_start *start;
+    guchar *session = NULL, *dh_cert = NULL;
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        error_report("%s: g_malloc() failed", __func__);
+        exit(1);
+    }
+
+    start->handle = object_property_get_int(OBJECT(sev), "handle",
+                                            &error_abort);
+    start->policy = object_property_get_int(OBJECT(sev), "policy",
+                                            &error_abort);
+    if (sev->session_file) {
+        if (sev_read_file_base64(sev->session_file, &session, &sz) < 0) {
+            exit(1);
+        }
+        start->session_uaddr= (unsigned long)session;
+        start->session_len = sz;
+    }
+
+    if (sev->dh_cert_file) {
+        if (sev_read_file_base64(sev->dh_cert_file, &dh_cert, &sz) < 0) {
+            exit(1);
+        }
+        start->dh_uaddr = (unsigned long)dh_cert;
+        start->dh_len = sz;
+    }
+
+    ret = sev_ioctl(KVM_SEV_LAUNCH_START, start, &fw_error);
+    if (ret < 0) {
+        error_report("%s: LAUNCH_START ret=%d fw_error=%d '%s'",
+                __func__, ret, fw_error, fw_error_to_str(fw_error));
+        exit(1);
+    }
+
+    DPRINTF("SEV: LAUNCH_START\n");
+
+    object_property_set_int(OBJECT(sev), start->handle, "handle",
+                            &error_abort);
+    s->cur_state = SEV_STATE_LUPDATE;
+
+    g_free(start);
+    g_free(session);
+    g_free(dh_cert);
+}
+
 void *
 sev_guest_init(const char *id)
 {
@@ -323,6 +402,11 @@ sev_guest_init(const char *id)
 err:
     g_free(s);
     return NULL;
+}
+
+void sev_create_context(void *handle)
+{
+    sev_launch_start((SEVState *)handle);
 }
 
 static void
