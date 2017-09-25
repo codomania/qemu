@@ -361,6 +361,37 @@ sev_launch_start(SEVState *s)
     g_free(dh_cert);
 }
 
+static int
+sev_launch_update_data(uint8_t *addr, uint64_t len)
+{
+    int ret, fw_error;
+    struct kvm_sev_launch_update_data *update;
+
+    if (addr == NULL || len <= 0) {
+        return 1;
+    }
+
+    update = g_malloc0(sizeof(*update));
+    if (!update) {
+        return 1;
+    }
+
+    update->uaddr = (__u64)addr;
+    update->len = len;
+    ret = sev_ioctl(KVM_SEV_LAUNCH_UPDATE_DATA, update, &fw_error);
+    if (ret) {
+        error_report("%s: LAUNCH_UPDATE ret=%d fw_error=%d '%s'",
+                __func__, ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+
+    DPRINTF("SEV: LAUNCH_UPDATE_DATA %#lx+%#lx\n", (unsigned long)addr, len);
+
+err:
+    g_free(update);
+    return ret;
+}
+
 void *
 sev_guest_init(const char *id)
 {
@@ -407,6 +438,19 @@ err:
 void sev_create_context(void *handle)
 {
     sev_launch_start((SEVState *)handle);
+}
+
+int
+sev_encrypt_data(void *handle, uint8_t *ptr, uint64_t len)
+{
+    SEVState *s = (SEVState *)handle;
+
+    /* if SEV is in update state then encrypt the data else do nothing */
+    if (s->cur_state == SEV_STATE_LUPDATE) {
+        return sev_launch_update_data(ptr, len);
+    }
+
+    return 0;
 }
 
 static void

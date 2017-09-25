@@ -1694,6 +1694,7 @@ static int kvm_init(MachineState *ms)
             goto err;
         }
         kvm_state->memcrypt_create_context = sev_create_context;
+        kvm_state->memcrypt_encrypt_data = sev_encrypt_data;
     }
 
     ret = kvm_arch_init(ms, s);
