@@ -4506,6 +4506,9 @@ int main(int argc, char **argv, char **envp)
 
     configure_accelerator(current_machine);
 
+    /* now the accelerator is configured, create memory encryption context */
+    kvm_memcrypt_create_context();
+
     /*
      * Register all the global properties, including accel properties,
      * machine properties, and user-specified ones.

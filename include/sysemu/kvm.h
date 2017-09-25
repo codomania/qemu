@@ -231,6 +231,39 @@ int kvm_destroy_vcpu(CPUState *cpu);
  */
 bool kvm_arm_supports_user_irq(void);
 
+/**
+ * kvm_memcrypt_enabled - return boolean indicating whether memory encryption
+ *                        is enabled
+ * Returns: 1 memory encryption is enabled
+ *          0 memory encryption is disabled
+ */
+bool kvm_memcrypt_enabled(void);
+
+/**
+ * kvm_memcrypt_create_context - if memory encryption is enabled then create
+ *                               the encryption context.
+ */
+void kvm_memcrypt_create_context(void);
+
+/**
+ * kvm_memcrypt_encrypt_data: encrypt the memory region
+ *
+ * Return: 1 failed to encrypt the region or memory encryption is not enabled
+ *         0 succesfully encrypted memory region
+ */
+int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len);
+
+/**
+ * kvm_memcrypt_set_debug_ram_ops: register memory region to use ram_debug_ops
+ *
+ * When memory encryption is enabled, the guest memory region will be encrypted
+ * with a guest-specific key, registering a debug_ram_ops will ensure that
+ * whenever qemu tries to access this memory region for debug purposes it will
+ * use memory encryption internal APIs to decrypt or encrypt the memory region.
+ */
+void kvm_memcrypt_set_debug_ops(MemoryRegion *mr);
+
+
 #ifdef NEED_CPU_H
 #include "cpu.h"
 
