@@ -37,6 +37,8 @@ typedef struct MemTxAttrs {
     unsigned int user:1;
     /* Requester ID (for MSI for example) */
     unsigned int requester_id:16;
+    /* Debug memory access for encrypted guest */
+    unsigned int debug:1;
 } MemTxAttrs;
 
 /* Bus masters which don't specify any attributes will get this,
@@ -56,4 +58,6 @@ typedef struct MemTxAttrs {
 #define MEMTX_DECODE_ERROR      (1U << 1) /* nothing at that address */
 typedef uint32_t MemTxResult;
 
+/* Access the guest memory for debug purposes */
+#define MEMTXATTRS_DEBUG ((MemTxAttrs) { .debug = 1 })
 #endif
