@@ -3194,3 +3194,22 @@
 # Since 2.9
 ##
 { 'command': 'query-vm-generation-id', 'returns': 'GuidInfo' }
+
+##
+# @SEV_MEASUREMENT:
+#
+# Emitted when measurement is available for the SEV guest.
+#
+# @value: measurement value encoded in base64
+#
+#
+# Since: 2.11
+#
+# Example:
+#
+# <- { "event" : "SEV_MEASUREMENT"
+#      "data": { "value" : "0000" } }
+#
+##
+{ 'event' : 'SEV_MEASUREMENT',
+  'data' : { 'value' : 'str' } }
