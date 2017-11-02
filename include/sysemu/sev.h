@@ -51,13 +51,25 @@ struct QSevGuestInfoClass {
     ObjectClass parent_class;
 };
 
+enum {
+    SEV_STATE_INVALID = 0,
+    SEV_STATE_LUPDATE,
+    SEV_STATE_SECRET,
+    SEV_STATE_RUNNING,
+    SEV_STATE_SENDING,
+    SEV_STATE_RECEIVING,
+    SEV_STATE_MAX
+};
+
 struct SEVState {
     QSevGuestInfo *sev_info;
+    int cur_state;
 };
 
 typedef struct SEVState SEVState;
 
 void *sev_guest_init(const char *id);
+void sev_create_context(void *handle);
 
 #endif
 
