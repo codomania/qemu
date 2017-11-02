@@ -105,6 +105,24 @@ int kvm_on_sigbus(int code, void *addr)
     return 1;
 }
 
+bool kvm_memcrypt_enabled(void)
+{
+    return false;
+}
+
+void kvm_memcrypt_create_context(void)
+{
+}
+
+int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len)
+{
+  return 1;
+}
+
+void kvm_memcrypt_set_debug_ops(MemoryRegion *mr)
+{
+}
+
 #ifndef CONFIG_USER_ONLY
 int kvm_irqchip_add_msi_route(KVMState *s, int vector, PCIDevice *dev)
 {
