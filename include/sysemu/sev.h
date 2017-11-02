@@ -64,6 +64,7 @@ enum {
 struct SEVState {
     QSevGuestInfo *sev_info;
     int cur_state;
+    gchar *measurement;
 };
 
 typedef struct SEVState SEVState;
