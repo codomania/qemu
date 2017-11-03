@@ -2963,7 +2963,10 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-            memcpy(ptr, buf, l);
+            if (attrs.debug && mr->ram_debug_ops)
+                mr->ram_debug_ops->write(ptr, buf, l, attrs);
+            else
+                memcpy(ptr, buf, l);
             invalidate_and_set_dirty(mr, addr1, l);
         }
 
@@ -3061,7 +3064,10 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-            memcpy(buf, ptr, l);
+            if (attrs.debug && mr->ram_debug_ops)
+                mr->ram_debug_ops->read(buf, ptr, l, attrs);
+            else
+                memcpy(buf, ptr, l);
         }
 
         if (release_lock) {
@@ -3131,11 +3137,13 @@ void cpu_physical_memory_rw(hwaddr addr, uint8_t *buf,
 
 enum write_rom_type {
     WRITE_DATA,
+    READ_DATA,
     FLUSH_CACHE,
 };
 
-static inline void cpu_physical_memory_write_rom_internal(AddressSpace *as,
-    hwaddr addr, const uint8_t *buf, int len, enum write_rom_type type)
+static inline void cpu_physical_memory_rw_debug_internal(AddressSpace *as,
+    hwaddr addr, uint8_t *buf, int len, MemTxAttrs attrs,
+    enum write_rom_type type)
 {
     hwaddr l;
     uint8_t *ptr;
@@ -3150,12 +3158,33 @@ static inline void cpu_physical_memory_write_rom_internal(AddressSpace *as,
         if (!(memory_region_is_ram(mr) ||
               memory_region_is_romd(mr))) {
             l = memory_access_size(mr, l, addr1);
+            /* Pass MMIO down to address address_space_rw */
+            switch (type) {
+            case READ_DATA:
+            case WRITE_DATA:
+                address_space_rw(as, addr1, attrs, buf, l,
+                                 type == WRITE_DATA);
+                break;
+            case FLUSH_CACHE:
+                break;
+            }
         } else {
             /* ROM/RAM case */
             ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
             switch (type) {
+            case READ_DATA:
+                if (mr->ram_debug_ops) {
+                    mr->ram_debug_ops->read(buf, ptr, l, attrs);
+                } else {
+                    memcpy(buf, ptr, l);
+                }
+                break;
             case WRITE_DATA:
-                memcpy(ptr, buf, l);
+                if (mr->ram_debug_ops) {
+                    mr->ram_debug_ops->write(ptr, buf, l, attrs);
+                } else {
+                    memcpy(ptr, buf, l);
+                }
                 invalidate_and_set_dirty(mr, addr1, l);
                 break;
             case FLUSH_CACHE:
@@ -3174,7 +3203,8 @@ static inline void cpu_physical_memory_write_rom_internal(AddressSpace *as,
 void cpu_physical_memory_write_rom(AddressSpace *as, hwaddr addr,
                                    const uint8_t *buf, int len)
 {
-    cpu_physical_memory_write_rom_internal(as, addr, buf, len, WRITE_DATA);
+    cpu_physical_memory_rw_debug_internal(as, addr, (uint8_t *)buf, len,
+            MEMTXATTRS_UNSPECIFIED, WRITE_DATA);
 }
 
 void cpu_flush_icache_range(hwaddr start, int len)
@@ -3189,8 +3219,10 @@ void cpu_flush_icache_range(hwaddr start, int len)
         return;
     }
 
-    cpu_physical_memory_write_rom_internal(&address_space_memory,
-                                           start, NULL, len, FLUSH_CACHE);
+    cpu_physical_memory_rw_debug_internal(&address_space_memory,
+                                           start, NULL, len,
+                                           MEMTXATTRS_UNSPECIFIED,
+                                           FLUSH_CACHE);
 }
 
 typedef struct {
@@ -3496,6 +3528,7 @@ int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
     int l;
     hwaddr phys_addr;
     target_ulong page;
+    int type = is_write ? WRITE_DATA : READ_DATA;
 
     cpu_synchronize_state(cpu);
     while (len > 0) {
@@ -3505,6 +3538,10 @@ int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
         page = addr & TARGET_PAGE_MASK;
         phys_addr = cpu_get_phys_page_attrs_debug(cpu, page, &attrs);
         asidx = cpu_asidx_from_attrs(cpu, attrs);
+
+        /* set debug attribute */
+        attrs.debug = 1;
+
         /* if no physical page mapped, return an error */
         if (phys_addr == -1)
             return -1;
@@ -3512,14 +3549,9 @@ int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
         if (l > len)
             l = len;
         phys_addr += (addr & ~TARGET_PAGE_MASK);
-        if (is_write) {
-            cpu_physical_memory_write_rom(cpu->cpu_ases[asidx].as,
-                                          phys_addr, buf, l);
-        } else {
-            address_space_rw(cpu->cpu_ases[asidx].as, phys_addr,
-                             MEMTXATTRS_UNSPECIFIED,
-                             buf, l, 0);
-        }
+        cpu_physical_memory_rw_debug_internal(cpu->cpu_ases[asidx].as,
+                                               phys_addr, buf, l, attrs,
+                                               type);
         len -= l;
         buf += l;
         addr += l;
