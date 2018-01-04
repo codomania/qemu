@@ -180,6 +180,8 @@ static void pc_system_flash_init(MemoryRegion *rom_memory)
                     error_report("failed to encrypt pflash rom");
                     exit(1);
                 }
+
+                kvm_memcrypt_set_memory_region(flash_mem);
             }
         }
     }

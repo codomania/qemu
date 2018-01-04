@@ -1356,6 +1356,11 @@ void pc_memory_init(PCMachineState *pcms,
         e820_add_entry(0x100000000ULL, pcms->above_4g_mem_size, E820_RAM);
     }
 
+    /* When encryption is enabled, the guest RAM will contain encrypted data */
+    if (kvm_memcrypt_enabled()) {
+        kvm_memcrypt_set_memory_region(ram);
+    }
+
     if (!pcmc->has_reserved_memory &&
         (machine->ram_slots ||
          (machine->maxram_size > machine->ram_size))) {
