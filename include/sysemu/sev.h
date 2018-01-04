@@ -21,6 +21,37 @@
 #include "sysemu/kvm.h"
 #include "qemu/error-report.h"
 
+#define TYPE_QSEV_SEND_INFO "sev-send-info"
+#define QSEV_SEND_INFO(obj)                  \
+    OBJECT_CHECK(QSevSendInfo, (obj), TYPE_QSEV_SEND_INFO)
+
+typedef struct QSevSendInfo QSevSendInfo;
+typedef struct QSevSendInfoClass QSevSendInfoClass;
+
+/**
+ * QSevSendInfo:
+ *
+ * The QSevSendInfo object provides parameters to create a encryption
+ * context for outgoing guest.
+ *
+ * # $QEMU -object sev-send-info,id=sev-send0,dh-cert-file=<file>
+ *         ....
+ */
+struct QSevSendInfo {
+    Object parent_obj;
+
+    char *pdh_cert_file;
+    char *plat_cert_file;
+    char *amd_cert_file;
+
+    uint8_t *packet_hdr;
+    int packet_hdr_len;
+};
+
+struct QSevSendInfoClass {
+    ObjectClass parent_class;
+};
+
 #define TYPE_QSEV_LAUNCH_SECRET "sev-launch-secret"
 #define QSEV_LAUNCH_SECRET(obj)                  \
     OBJECT_CHECK(QSevLaunchSecret, (obj), TYPE_QSEV_LAUNCH_SECRET)
@@ -64,6 +95,8 @@ struct QSevGuestInfo {
     uint32_t handle;
     char *dh_cert_file;
     char *session_file;
+
+    QSevSendInfo *send_info;
 };
 
 struct QSevGuestInfoClass {

@@ -278,6 +278,11 @@ qsev_guest_init(Object *obj)
                         qsev_guest_set_policy, NULL, NULL, NULL);
     object_property_add(obj, "handle", "uint32", qsev_guest_get_handle,
                         qsev_guest_set_handle, NULL, NULL, NULL);
+    object_property_add_link(obj, "send", TYPE_QSEV_SEND_INFO,
+                             (Object **)&sev->send_info,
+                             object_property_allow_set_link,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE, NULL);
+
 }
 
 /* sev guest info */
@@ -863,11 +868,108 @@ static const TypeInfo qsev_launch_secret = {
     }
 };
 
+static char *
+qsev_send_get_plat_cert_file(Object *obj, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    return g_strdup(s->plat_cert_file);
+}
+
+static void
+qsev_send_set_plat_cert_file(Object *obj, const char *value, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    s->plat_cert_file = g_strdup(value);
+}
+
+static char *
+qsev_send_get_pdh_cert_file(Object *obj, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    return g_strdup(s->pdh_cert_file);
+}
+
+static void
+qsev_send_set_pdh_cert_file(Object *obj, const char *value, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    s->pdh_cert_file = g_strdup(value);
+}
+
+static char *
+qsev_send_get_amd_cert_file(Object *obj, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    return g_strdup(s->amd_cert_file);
+}
+
+static void
+qsev_send_set_amd_cert_file(Object *obj, const char *value, Error **errp)
+{
+    QSevSendInfo *s = QSEV_SEND_INFO(obj);
+
+    s->amd_cert_file = g_strdup(value);
+}
+
+static void
+qsev_send_class_init(ObjectClass *oc, void *data)
+{
+    object_class_property_add_str(oc, "pdh-cert-file",
+                                  qsev_send_get_pdh_cert_file,
+                                  qsev_send_set_pdh_cert_file,
+                                  NULL);
+    object_class_property_set_description(oc, "pdh-cert-file",
+            "guest owners PDH certificate", NULL);
+    object_class_property_add_str(oc, "plat-cert-file",
+                                  qsev_send_get_plat_cert_file,
+                                  qsev_send_set_plat_cert_file,
+                                  NULL);
+    object_class_property_set_description(oc, "plat-cert-file",
+            "guest owners platform certificate", NULL);
+    object_class_property_add_str(oc, "amd-cert-file",
+                                  qsev_send_get_amd_cert_file,
+                                  qsev_send_set_amd_cert_file,
+                                  NULL);
+    object_class_property_set_description(oc, "amd-cert-file",
+            "Amd certificate chain", NULL);
+}
+
+static void
+qsev_send_init(Object *obj)
+{
+}
+
+static void
+qsev_send_finalize(Object *obj)
+{
+}
+
+/* guest send */
+static const TypeInfo qsev_send_info = {
+    .parent = TYPE_OBJECT,
+    .name = TYPE_QSEV_SEND_INFO,
+    .instance_size = sizeof(QSevSendInfo),
+    .instance_finalize = qsev_send_finalize,
+    .class_size = sizeof(QSevSendInfoClass),
+    .class_init = qsev_send_class_init,
+    .instance_init = qsev_send_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_USER_CREATABLE },
+        { }
+    }
+};
+
 static void
 sev_register_types(void)
 {
     type_register_static(&qsev_guest_info);
     type_register_static(&qsev_launch_secret);
+    type_register_static(&qsev_send_info);
 }
 
 type_init(sev_register_types);
