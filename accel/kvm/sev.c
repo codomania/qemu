@@ -21,6 +21,7 @@
 #include "trace.h"
 #include "qapi-event.h"
 #include "migration/blocker.h"
+#include "exec/address-spaces.h"
 
 #define DEFAULT_GUEST_POLICY    0x1 /* disable debug */
 #define DEFAULT_SEV_DEVICE      "/dev/sev"
@@ -646,9 +647,227 @@ sev_set_memory_region(void *handle, MemoryRegion *mr)
 }
 
 static void
+qsev_launch_secret_finalize(Object *obj)
+{
+}
+
+static void *gpa2hva(hwaddr addr, uint64_t size)
+{
+    MemoryRegionSection mrs = memory_region_find(get_system_memory(),
+                                                 addr, size);
+
+    if (!mrs.mr) {
+        error_report("No memory is mapped at address 0x%" HWADDR_PRIx, addr);
+        return NULL;
+    }
+
+    if (!memory_region_is_ram(mrs.mr) && !memory_region_is_romd(mrs.mr)) {
+        error_report("Memory at address 0x%" HWADDR_PRIx "is not RAM", addr);
+        memory_region_unref(mrs.mr);
+        return NULL;
+    }
+
+    return qemu_map_ram_ptr(mrs.mr->ram_block, mrs.offset_within_region);
+}
+
+static void
+sev_launch_secret(QSevLaunchSecret *secret)
+{
+    struct kvm_sev_launch_secret *input;
+    guchar *data, *hdr;
+    int error, ret;
+    gsize hdr_sz = 0, data_sz = 0;
+
+    if (!secret->hdr || !secret->data) {
+        return;
+    }
+
+    hdr = g_base64_decode(secret->hdr, &hdr_sz);
+    if (!hdr || !hdr_sz) {
+        error_report("SEV: Failed to decode sequence header");
+        return;
+    }
+
+    data = g_base64_decode(secret->data, &data_sz);
+    if (!data || !data_sz) {
+        error_report("SEV: Failed to decode data");
+        return;
+    }
+
+    input = g_malloc0(sizeof(*input));
+    if (!input) {
+        return;
+    }
+
+    input->hdr_uaddr = (unsigned long)hdr;
+    input->hdr_len = hdr_sz;
+
+    input->trans_uaddr = (unsigned long)data;
+    input->trans_len = data_sz;
+
+    input->guest_uaddr = (unsigned long)gpa2hva(secret->gpa, data_sz);
+    input->guest_len = data_sz;
+
+    trace_kvm_sev_launch_secret(secret->gpa, input->guest_uaddr,
+                                input->trans_uaddr, input->trans_len);
+
+    ret = sev_ioctl(KVM_SEV_LAUNCH_SECRET, input, &error);
+    if (ret) {
+        error_report("SEV: failed to inject secret ret=%d fw_error=%d '%s'",
+                     ret, error, fw_error_to_str(error));
+    }
+
+    g_free(data);
+    g_free(hdr);
+    g_free(input);
+}
+
+static char *
+qsev_launch_secret_get_hdr(Object *obj, Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+
+    return g_strdup(s->hdr);
+}
+
+static void
+qsev_launch_secret_set_hdr(Object *obj, const char *value, Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+
+    s->hdr = g_strdup(value);
+}
+
+static char *
+qsev_launch_secret_get_data(Object *obj, Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+
+    return g_strdup(s->data);
+}
+
+static void
+qsev_launch_secret_set_data(Object *obj, const char *value, Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+
+    s->data = g_strdup(value);
+}
+
+static void
+qsev_launch_secret_set_loaded(Object *obj, bool value, Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+
+    if (!sev_check_state(SEV_STATE_SECRET)) {
+        error_report("SEV: failed to inject secret,"
+                     " invalid state (expected %d got %d)",
+                     SEV_STATE_SECRET, current_sev_guest_state);
+        return;
+    }
+
+    sev_launch_secret(s);
+}
+
+static bool
+qsev_launch_secret_get_loaded(Object *obj G_GNUC_UNUSED,
+                              Error **errp G_GNUC_UNUSED)
+{
+    return false;
+}
+
+static void
+qsev_launch_secret_complete(UserCreatable *uc, Error **errp)
+{
+    object_property_set_bool(OBJECT(uc), true, "loaded", errp);
+}
+
+static void
+qsev_launch_secret_get_gpa(Object *obj, Visitor *v,
+                           const char *name, void *opaque,
+                           Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+    uint64_t value = s->gpa;
+
+    visit_type_uint64(v, name, &value, errp);
+}
+
+static void
+qsev_launch_secret_set_gpa(Object *obj, Visitor *v,
+                           const char *name, void *opaque,
+                           Error **errp)
+{
+    QSevLaunchSecret *s = QSEV_LAUNCH_SECRET(obj);
+    Error *error = NULL;
+    uint64_t value;
+
+    visit_type_uint64(v, name, &value, &error);
+    if (error) {
+        error_propagate(errp, error);
+        return;
+    }
+
+    s->gpa = value;
+}
+
+static void
+qsev_launch_secret_class_init(ObjectClass *oc, void *data)
+{
+    UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
+
+    ucc->complete = qsev_launch_secret_complete;
+
+    object_class_property_add_bool(oc, "loaded",
+                                   qsev_launch_secret_get_loaded,
+                                   qsev_launch_secret_set_loaded,
+                                   NULL);
+
+    object_class_property_add(oc, "gpa", "uint64",
+                                   qsev_launch_secret_get_gpa,
+                                   qsev_launch_secret_set_gpa,
+                                   NULL, NULL, NULL);
+    object_class_property_set_description(oc, "gpa",
+            "Guest physical address to inject the secret", NULL);
+
+    object_class_property_add_str(oc, "hdr",
+                                  qsev_launch_secret_get_hdr,
+                                  qsev_launch_secret_set_hdr,
+                                  NULL);
+    object_class_property_set_description(oc, "hdr",
+            "Launch secret data header (encoded in base64) ", NULL);
+    object_class_property_add_str(oc, "data",
+                                  qsev_launch_secret_get_data,
+                                  qsev_launch_secret_set_data,
+                                  NULL);
+    object_class_property_set_description(oc, "data",
+            "Secret data to be injected (encoded in base64) ", NULL);
+}
+
+static void
+qsev_launch_secret_init(Object *obj)
+{
+}
+
+static const TypeInfo qsev_launch_secret = {
+    .parent = TYPE_OBJECT,
+    .name = TYPE_QSEV_LAUNCH_SECRET,
+    .instance_size = sizeof(QSevLaunchSecret),
+    .instance_finalize = qsev_launch_secret_finalize,
+    .class_size = sizeof(QSevLaunchSecretClass),
+    .class_init = qsev_launch_secret_class_init,
+    .instance_init = qsev_launch_secret_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_USER_CREATABLE },
+        { }
+    }
+};
+
+static void
 sev_register_types(void)
 {
     type_register_static(&qsev_guest_info);
+    type_register_static(&qsev_launch_secret);
 }
 
 type_init(sev_register_types);

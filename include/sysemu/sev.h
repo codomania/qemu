@@ -21,6 +21,25 @@
 #include "sysemu/kvm.h"
 #include "qemu/error-report.h"
 
+#define TYPE_QSEV_LAUNCH_SECRET "sev-launch-secret"
+#define QSEV_LAUNCH_SECRET(obj)                  \
+    OBJECT_CHECK(QSevLaunchSecret, (obj), TYPE_QSEV_LAUNCH_SECRET)
+
+typedef struct QSevLaunchSecret QSevLaunchSecret;
+typedef struct QSevLaunchSecretClass QSevLaunchSecretClass;
+
+struct QSevLaunchSecret {
+    Object parent_obj;
+
+    uint64_t gpa;
+    char *hdr;
+    char *data;
+};
+
+struct QSevLaunchSecretClass {
+    ObjectClass parent_class;
+};
+
 #define TYPE_QSEV_GUEST_INFO "sev-guest"
 #define QSEV_GUEST_INFO(obj)                  \
     OBJECT_CHECK(QSevGuestInfo, (obj), TYPE_QSEV_GUEST_INFO)
