@@ -126,6 +126,5 @@ int sev_encrypt_data(void *handle, uint8_t *ptr, uint64_t len);
 void sev_set_memory_region(void *handle, MemoryRegion *mr);
 int sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
                            uint32_t sz, uint64_t *bytes_sent);
-
+int sev_load_incoming_page(void *handle, QEMUFile *f, uint8_t *ptr);
 #endif
-
