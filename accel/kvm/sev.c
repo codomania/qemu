@@ -11,6 +11,7 @@
  *
  */
 
+#include <sys/ioctl.h>
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qom/object_interfaces.h"
@@ -22,6 +23,8 @@
 #include "qapi-event.h"
 #include "migration/blocker.h"
 #include "exec/address-spaces.h"
+#include "migration/qemu-file.h"
+#include "migration/misc.h"
 
 #define DEFAULT_GUEST_POLICY    0x1 /* disable debug */
 #define DEFAULT_SEV_DEVICE      "/dev/sev"
@@ -469,8 +472,41 @@ free_measurement:
     g_free(measurement);
 }
 
+static void
+sev_send_finish(void)
+{
+    int ret, error;
+
+    trace_kvm_sev_send_finish();
+    ret = sev_ioctl(KVM_SEV_SEND_FINISH, 0, &error);
+    if (ret) {
+        error_report("%s: LAUNCH_FINISH ret=%d fw_error=%d '%s'",
+                     __func__, ret, error, fw_error_to_str(error));
+    }
+
+    sev_set_guest_state(SEV_STATE_RUNNING);
+}
+
+static void
+sev_migration_state_notifier(Notifier *notifier, void *data)
+{
+    MigrationState *s = data;
+
+    if (migration_has_finished(s) ||
+        migration_in_postcopy_after_devices(s) ||
+        migration_has_failed(s)) {
+        if (sev_check_state(SEV_STATE_SUPDATE)) {
+            sev_send_finish();
+        }
+    }
+}
+
 static Notifier sev_machine_done_notify = {
     .notify = sev_launch_get_measure,
+};
+
+static Notifier sev_migration_state_notify = {
+    .notify = sev_migration_state_notifier,
 };
 
 static void
@@ -601,6 +637,7 @@ sev_guest_init(const char *id)
     ram_block_notifier_add(&sev_ram_notifier);
     qemu_add_machine_init_done_notifier(&sev_machine_done_notify);
     qemu_add_vm_change_state_handler(sev_vm_state_change, s);
+    add_migration_state_change_notifier(&sev_migration_state_notify);
 
     sev_state = s;
 
@@ -867,6 +904,334 @@ static const TypeInfo qsev_launch_secret = {
         { }
     }
 };
+
+static int
+platform_ioctl(int cmd, void *data, int *error)
+{
+    int r;
+	struct sev_issue_cmd arg;
+
+	arg.cmd = cmd;
+	arg.data = (unsigned long)data;
+	r = ioctl(sev_fd, SEV_ISSUE_CMD, &arg);
+	if (error) {
+		*error = arg.error;
+    }
+
+    return r;
+}
+
+static int
+sev_get_pdh_cert(guchar **pdh_cert, int *pdh_len)
+{
+    int fw_err, ret;
+    guchar *cert_chain = NULL, *buffer;
+    struct sev_user_data_pdh_cert_export *data;
+
+    data = g_malloc0(sizeof(*data));
+    if (!data) {
+        return -1;
+    }
+
+    /* Query the PDH certificate length */
+    ret = platform_ioctl(SEV_PDH_CERT_EXPORT, data, &fw_err);
+    if (fw_err != SEV_RET_INVALID_LEN) {
+        error_report("%s: failed to get PDH certificate length ret=%d"
+                     " fw_error=%d '%s'", __func__, ret, fw_err,
+                     fw_error_to_str(fw_err));
+        goto err;
+    }
+
+    /* allocate the buffers and get the certificates */
+    cert_chain = g_malloc(data->cert_chain_len);
+    if (!cert_chain) {
+        ret = 1;
+        goto err;
+    }
+
+    buffer = g_malloc(data->pdh_cert_len);
+    if (!buffer) {
+        ret = 1;
+        goto err;
+    }
+
+    data->pdh_cert_address = (unsigned long)buffer;
+    data->cert_chain_address = (unsigned long)cert_chain;
+
+    ret = platform_ioctl(SEV_PDH_CERT_EXPORT, data, &fw_err);
+    if (ret) {
+        error_report("%s: failed to get PDH certificate length ret=%d"
+                     " fw_error=%d '%s'", __func__, ret, fw_err,
+                     fw_error_to_str(fw_err));
+        g_free(buffer);
+        goto err;
+    }
+
+    *pdh_len = data->pdh_cert_len;
+    *pdh_cert = buffer;
+err:
+    g_free(cert_chain);
+    g_free(data);
+    return ret;
+}
+
+static int
+sev_get_send_session_length(void)
+{
+    int ret, fw_err = 0;
+    struct kvm_sev_send_start *start;
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        return -1;
+    }
+
+    ret = sev_ioctl(KVM_SEV_SEND_START, start, &fw_err);
+    if (fw_err != SEV_RET_INVALID_LEN) {
+        ret = -1;
+        error_report("%s: failed to get session length ret=%d fw_error=%d '%s'",
+                     __func__, ret, fw_err, fw_error_to_str(fw_err));
+        goto err;
+    }
+
+    ret = start->session_len;
+err:
+    g_free(start);
+    return ret;
+}
+
+static int
+sev_send_start(QSevGuestInfo *sev, QEMUFile *f, uint64_t *bytes_sent)
+{
+    gsize sz;
+    int ret = 1;
+    Object *obj;
+    int fw_error;
+    int session_len;
+    int src_pdh_len = 0;
+    QSevSendInfo *send;
+    struct kvm_sev_send_start *start;
+    guchar *src_pdh_cert = NULL, *session = NULL;
+    guchar *amd_cert = NULL, *plat_cert = NULL, *dst_pdh_cert = NULL;
+
+    /* locate sev-send-info object to get input parameters for SEND_START */
+    obj = object_resolve_path_type("", TYPE_QSEV_SEND_INFO, NULL);
+    if (!obj) {
+        error_report("%s: failed to locate '%s' object",
+                __func__, TYPE_QSEV_SEND_INFO);
+        return 1;
+    }
+
+    send = QSEV_SEND_INFO(obj);
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        return 1;
+    }
+
+    /* get receiver's PDH key */
+    if (send->pdh_cert_file) {
+        if (sev_read_file_base64(send->pdh_cert_file, &src_pdh_cert, &sz) < 0) {
+            ret = 1;
+            goto err;
+        }
+
+        start->pdh_cert_uaddr = (unsigned long) src_pdh_cert;
+        start->pdh_cert_len = sz;
+    }
+
+    /* get recievers certificate chain */
+    if (send->amd_cert_file) {
+        if (sev_read_file_base64(send->amd_cert_file, &amd_cert, &sz) < 0) {
+            ret = 1;
+            goto err;
+        }
+
+        start->amd_cert_uaddr = (unsigned long)amd_cert;
+        start->amd_cert_len = sz;
+    }
+
+    if (send->plat_cert_file) {
+        if (sev_read_file_base64(send->plat_cert_file, &plat_cert, &sz) < 0) {
+            ret = 1;
+            goto err;
+        }
+
+        start->plat_cert_uaddr = (unsigned long)plat_cert;
+        start->plat_cert_len = sz;
+    }
+
+    /* get the session length */
+    session_len = sev_get_send_session_length();
+    if (session_len < 0) {
+        ret = 1;
+        goto err;
+    }
+
+    session = g_malloc(session_len);
+    if (!session) {
+        ret = 1;
+        goto err;
+    }
+    start->session_uaddr = (unsigned long)session;
+    start->session_len = session_len;
+
+    /* Get our PDH certificate */
+    ret = sev_get_pdh_cert(&src_pdh_cert, &src_pdh_len);
+    if (ret) {
+        error_report("Failed to get sender PDH cert");
+        goto err;
+    }
+
+    trace_kvm_sev_send_start(start->pdh_cert_uaddr, start->pdh_cert_len,
+                             start->plat_cert_uaddr, start->plat_cert_len,
+                             start->amd_cert_uaddr, start->amd_cert_len);
+
+    ret = sev_ioctl(KVM_SEV_SEND_START, start, &fw_error);
+    if (ret < 0) {
+        error_report("%s: SEND_START ret=%d fw_error=%d '%s'",
+                __func__, ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+
+    qemu_put_be32(f, start->policy);
+    qemu_put_be32(f, src_pdh_len);
+    qemu_put_buffer(f, (uint8_t *)src_pdh_cert, src_pdh_len);
+    qemu_put_be32(f, start->session_len);
+    qemu_put_buffer(f, (uint8_t *)start->session_uaddr, start->session_len);
+    *bytes_sent = 12 + src_pdh_len + start->session_len;
+
+    object_property_set_link(OBJECT(sev), obj, "send", &error_abort);
+    sev_set_guest_state(SEV_STATE_SUPDATE);
+
+err:
+    g_free(start);
+    g_free(src_pdh_cert);
+    g_free(dst_pdh_cert);
+    g_free(amd_cert);
+    g_free(plat_cert);
+    return ret;
+}
+
+static int
+sev_send_get_packet_len(int *fw_err)
+{
+#if 0
+    int ret;
+    struct kvm_sev_send_update_data *update;
+
+    update = g_malloc0(sizeof(*update));
+    if (!update) {
+        return -1;
+    }
+
+    ret = sev_ioctl(KVM_SEV_SEND_UPDATE_DATA, update, fw_err);
+    if (*fw_err != SEV_RET_INVALID_LEN) {
+        ret = -1;
+        error_report("%s: failed to get session length ret=%d fw_error=%d '%s'",
+                    __func__, ret, *fw_err, fw_error_to_str(*fw_err));
+        goto err;
+    }
+
+    ret = update->hdr_len;
+
+err:
+    g_free(update);
+    return ret;
+#endif
+    /* FIXME: SEV FW 0.14 build 20 does not return a valid header length */
+    return 52;
+}
+
+static int
+sev_send_update_data(QSevSendInfo *send_info, QEMUFile *f, uint8_t *ptr,
+                     uint32_t size, uint64_t *bytes_sent)
+{
+    int ret, fw_error = 0;
+    uint8_t *trans = NULL;
+    struct kvm_sev_send_update_data *update;
+
+    /* If this is first call then query the packet header bytes and allocate
+     * the packet buffer.
+     */
+    if (!send_info->packet_hdr) {
+        send_info->packet_hdr_len = sev_send_get_packet_len(&fw_error);
+        if (send_info->packet_hdr_len < 0) {
+            error_report("%s: SEND_UPDATE fw_error=%d '%s'",
+                    __func__, fw_error, fw_error_to_str(fw_error));
+            return 1;
+        }
+
+        send_info->packet_hdr = g_malloc(send_info->packet_hdr_len);
+        if (!send_info->packet_hdr) {
+            return 1;
+        }
+    }
+
+    update = g_malloc0(sizeof(*update));
+    if (!update) {
+        return 1;
+    }
+
+    /* allocate transport buffer */
+    trans = g_malloc(size);
+    if (!trans) {
+        ret = 1;
+        goto err;
+    }
+
+    update->hdr_uaddr = (unsigned long)send_info->packet_hdr;
+    update->hdr_len = send_info->packet_hdr_len;
+    update->guest_uaddr = (unsigned long)ptr;
+    update->guest_len = size;
+    update->trans_uaddr = (unsigned long)trans;
+    update->trans_len = size;
+
+    trace_kvm_sev_send_update_data(ptr, trans, size);
+
+    ret = sev_ioctl(KVM_SEV_SEND_UPDATE_DATA, update, &fw_error);
+    if (ret) {
+        error_report("%s: SEND_UPDATE_DATA ret=%d fw_error=%d '%s'",
+                __func__, ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+
+    qemu_put_be32(f, update->hdr_len);
+    qemu_put_buffer(f, (uint8_t *)update->hdr_uaddr, update->hdr_len);
+    *bytes_sent = 4 + update->hdr_len;
+
+    qemu_put_be32(f, update->trans_len);
+    qemu_put_buffer(f, (uint8_t *)update->trans_uaddr, update->trans_len);
+    *bytes_sent += (4 + update->trans_len);
+
+err:
+    g_free(trans);
+    g_free(update);
+    return ret;
+}
+
+int
+sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
+                       uint32_t sz, uint64_t *bytes_sent)
+{
+    SEVState *s = (SEVState *)handle;
+    QSevSendInfo *send_info;
+    Object *obj;
+
+    /* If this is first buffer then create outgoing encryption context
+     * and write ours PDH key, policy and session data.
+     */
+    if (!sev_check_state(SEV_STATE_SUPDATE) &&
+        sev_send_start(s->sev_info, f, bytes_sent)) {
+        error_report("Failed to create outgoing context");
+        return 1;
+    }
+
+    obj = object_property_get_link(OBJECT(s->sev_info), "send", &error_abort);
+    send_info = QSEV_SEND_INFO(obj);
+
+    return sev_send_update_data(send_info, f, ptr, sz, bytes_sent);
+}
 
 static char *
 qsev_send_get_plat_cert_file(Object *obj, Error **errp)

@@ -1705,6 +1705,7 @@ static int kvm_init(MachineState *ms)
 
         kvm_state->memcrypt_encrypt_data = sev_encrypt_data;
         kvm_state->memcrypt_set_memory_region = sev_set_memory_region;
+        kvm_state->memcrypt_save_outgoing_page = sev_save_outgoing_page;
     }
 
     ret = kvm_arch_init(ms, s);
