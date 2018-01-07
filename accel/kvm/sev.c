@@ -33,7 +33,6 @@
 static int sev_fd;
 static SEVState *sev_state;
 static MemoryRegionRAMReadWriteOps  sev_ops;
-static Error *sev_mig_blocker;
 
 #define SEV_FW_MAX_ERROR      0x17
 
@@ -517,7 +516,6 @@ static void
 sev_launch_finish(SEVState *s)
 {
     int ret, error;
-    Error *local_err = NULL;
 
     trace_kvm_sev_launch_finish();
     ret = sev_ioctl(KVM_SEV_LAUNCH_FINISH, 0, &error);
@@ -528,16 +526,6 @@ sev_launch_finish(SEVState *s)
     }
 
     sev_set_guest_state(SEV_STATE_RUNNING);
-
-    /* add migration blocker */
-    error_setg(&sev_mig_blocker,
-               "SEV: Migration is not implemented");
-    ret = migrate_add_blocker(sev_mig_blocker, &local_err);
-    if (local_err) {
-        error_report_err(local_err);
-        error_free(sev_mig_blocker);
-        exit(1);
-    }
 }
 
 static int
