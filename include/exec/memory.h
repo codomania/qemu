@@ -267,6 +267,7 @@ struct MemoryRegion {
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
     const MemoryRegionRAMReadWriteOps *ram_debug_ops;
+    bool encrypted;
 };
 
 struct IOMMUMemoryRegion {
@@ -645,6 +646,29 @@ memory_region_set_ram_debug_ops(MemoryRegion *mr,
                                 const MemoryRegionRAMReadWriteOps *ops)
 {
     mr->ram_debug_ops = ops;
+}
+
+/**
+ * memory_region_set_encrypted: This memory region will contain encrypted data.
+ *
+ * @mr: the #MemoryRegion to be use
+ */
+static inline void
+memory_region_set_encrypted(MemoryRegion *mr)
+{
+    mr->encrypted = true;
+}
+
+/**
+ * memory_region_is_encrypted: check whether a memory region is encrypted
+ *
+ * Returns %true is a memory region contains encrypted data.
+ *
+ * @mr: the memory region being queried
+ */
+static inline bool memory_region_is_encrypted(MemoryRegion *mr)
+{
+    return mr->encrypted;
 }
 
 /**
