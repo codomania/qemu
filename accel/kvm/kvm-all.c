@@ -199,6 +199,23 @@ int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr)
     return 1;
 }
 
+void kvm_memcrypt_unenc_bitmap_sync_range(uint8_t *host, uint64_t length,
+                                          unsigned long *bitmap)
+{
+    struct kvm_unenc_log log;
+    int ret;
+
+    log.start = (unsigned long)host;
+    log.length = length;
+    log.bitmap = bitmap;
+
+    ret = kvm_vm_ioctl(kvm_state, KVM_GET_UNENC_LOG, &log);
+    if (ret) {
+        g_print("%s: failed to query log ret %d\n", __func__, ret);
+    }
+
+}
+
 static KVMSlot *kvm_get_free_slot(KVMMemoryListener *kml)
 {
     KVMState *s = kvm_state;

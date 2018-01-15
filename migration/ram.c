@@ -797,12 +797,20 @@ static inline bool migration_bitmap_clear_dirty(RAMState *rs,
     return ret;
 }
 
+static void migration_unenc_bitmap_sync_range(RAMState *rs, RAMBlock *rb,
+                                              ram_addr_t start, ram_addr_t length)
+{
+    kvm_memcrypt_unenc_bitmap_sync_range(rb->host, length, rb->unenc_bmap);
+}
+
 static void migration_bitmap_sync_range(RAMState *rs, RAMBlock *rb,
                                         ram_addr_t start, ram_addr_t length)
 {
     rs->migration_dirty_pages +=
         cpu_physical_memory_sync_dirty_bitmap(rb, start, length,
                                               &rs->num_dirty_pages_period);
+
+    migration_unenc_bitmap_sync_range(rs, rb, start, length);
 }
 
 /**
@@ -1026,6 +1034,12 @@ static int ram_save_page(RAMState *rs, PageSearchStatus *pss, bool last_stage)
     return pages;
 }
 
+static bool unencrypted_test_bitmap(RAMState *rs, RAMBlock *block,
+                                    unsigned long page)
+{
+    return test_bit(page, block->unenc_bmap);
+}
+
 /**
  * ram_save_encrypted_page - send the given encrypted page to the stream
  */
@@ -1040,7 +1054,8 @@ static int ram_save_encrypted_page(RAMState *rs, PageSearchStatus *pss,
 
     p = block->host + offset;
 
-    if (!memory_region_is_encrypted(pss->block->mr)) {
+    if (strcmp(memory_region_name(pss->block->mr), "system.flash0") &&
+        unencrypted_test_bitmap(rs, block, pss->page)) {
         return ram_save_page(rs, pss, last_stage);
     }
 
@@ -2194,6 +2209,10 @@ static void ram_list_init_bitmaps(void)
             if (migrate_postcopy_ram()) {
                 block->unsentmap = bitmap_new(pages);
                 bitmap_set(block->unsentmap, 0, pages);
+            }
+            if (kvm_memcrypt_enabled()) {
+                block->unenc_bmap = bitmap_new(pages);
+                bitmap_set(block->bmap, 0, pages);
             }
         }
     }

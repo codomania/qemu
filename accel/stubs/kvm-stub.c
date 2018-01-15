@@ -130,6 +130,11 @@ int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr)
     return 1;
 }
 
+void kvm_memcrypt_unenc_bitmap_sync_range(uint8_t *host, uint64_t length,
+                                         unsigned long *bitmap)
+{
+}
+
 #ifndef CONFIG_USER_ONLY
 int kvm_irqchip_add_msi_route(KVMState *s, int vector, PCIDevice *dev)
 {

@@ -1488,6 +1488,14 @@ struct kvm_sev_receive_update_data {
 	__u32 trans_len;
 };
 
+struct kvm_unenc_log {
+	__u64 start;
+	__u64 length;
+	void *bitmap; /* one bit per page */
+};
+
+#define KVM_GET_UNENC_LOG     	_IOW(KVMIO,  0xbe, struct kvm_unenc_log)
+
 #define KVM_DEV_ASSIGN_ENABLE_IOMMU	(1 << 0)
 #define KVM_DEV_ASSIGN_PCI_2_3		(1 << 1)
 #define KVM_DEV_ASSIGN_MASK_INTX	(1 << 2)

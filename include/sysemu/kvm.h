@@ -268,6 +268,9 @@ int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr, uint32_t size,
  */
 int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr);
 
+void kvm_memcrypt_unenc_bitmap_sync_range(uint8_t *host, uint64_t length,
+                                          unsigned long *bitmap);
+
 #ifdef NEED_CPU_H
 #include "cpu.h"
 
