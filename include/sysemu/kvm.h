@@ -255,6 +255,16 @@ int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len);
  */
 void kvm_memcrypt_set_debug_ops(MemoryRegion *mr);
 
+/**
+ * kvm_memcrypt_encrypt_outgoing_buffer - encrypt the outgoing buffer
+ */
+int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr, uint32_t size,
+                                    uint64_t *bytes_sent);
+
+/**
+ * kvm_memcrypt_encrypt_incoming_buffer - encrypt the incoming buffer
+ */
+int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr);
 
 #ifdef NEED_CPU_H
 #include "cpu.h"
