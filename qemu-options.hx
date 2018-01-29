@@ -4314,6 +4314,18 @@ e.g to launch a SEV guest
      .....
 
 @end example
+
+@item -object sev-send-info,id=@var{id},pdh-cert-file=@var{file}[,amd-cert-file=@var{file},plat-cert-file=@var{file}]
+
+To protect the confidentiality of SEV protected guest while in transit,
+its memory must be encrypted with a key that can be recovered by the next
+platform to execute it.
+
+The @option{pdh-cert-file} provides the receivers DH certificates.
+
+The @option{amd-cert-file} and @option{plat-cert-file} can be used for providing
+the platform certificate chain.
+
 @end table
 
 ETEXI
