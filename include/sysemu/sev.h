@@ -15,6 +15,7 @@
 #define QEMU_SEV_H
 
 #include <linux/kvm.h>
+#include <linux/psp-sev.h>
 
 #include "qom/object.h"
 #include "qapi/error.h"
@@ -123,6 +124,8 @@ typedef struct SEVState SEVState;
 void *sev_guest_init(const char *id);
 int sev_encrypt_data(void *handle, uint8_t *ptr, uint64_t len);
 void sev_set_debug_ops(void *handle, MemoryRegion *mr);
+int sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
+                           uint32_t sz, uint64_t *bytes_sent);
 
 #endif
 
