@@ -504,6 +504,33 @@ static int kvm_get_dirty_pages_log_range(MemoryRegionSection *section,
 
 #define ALIGN(x, y)  (((x)+(y)-1) & ~((y)-1))
 
+/* sync unencrytped bitmap */
+static int kvm_sync_unencrypted_bitmap(KVMMemoryListener *kml,
+                                       MemoryRegionSection *section,
+                                       KVMSlot *mem)
+{
+    KVMState *s = kvm_state;
+    struct kvm_unencrypted_bitmap e = {};
+    unsigned long size;
+    uint8_t mask = 1 << DIRTY_MEMORY_UNENCRYPTED;
+
+    size = ALIGN(((mem->memory_size) >> TARGET_PAGE_BITS),
+                 /*HOST_LONG_BITS*/ 64) / 8;
+    e.bitmap = g_malloc0(size);
+
+    e.slot = mem->slot | (kml->as_id << 16);
+    if (kvm_vm_ioctl(s, KVM_GET_UNENCRYPTED_BITMAP, &e) == -1) {
+        DPRINTF("GET_UNENCRYPTED_BITMAP ioctl failed %d\n", errno);
+        g_free(e.bitmap);
+        return 1;
+    }
+
+    kvm_get_dirty_pages_log_range(section, e.bitmap, mask);
+    g_free(e.bitmap);
+
+    return 0;
+}
+
 /**
  * kvm_physical_sync_dirty_bitmap - Grab dirty bitmap from kernel space
  * This function updates qemu's dirty bitmap using
@@ -520,7 +547,7 @@ static int kvm_physical_sync_dirty_bitmap(KVMMemoryListener *kml,
     struct kvm_dirty_log d = {};
     KVMSlot *mem;
     hwaddr start_addr, size;
-    uint8_t mask = DIRTY_CLIENTS_ALL;
+    uint8_t mask = DIRTY_CLIENTS_ALL & ~(1 << DIRTY_MEMORY_UNENCRYPTED);
 
     size = kvm_align_section(section, &start_addr);
     if (size) {
@@ -554,6 +581,13 @@ static int kvm_physical_sync_dirty_bitmap(KVMMemoryListener *kml,
         }
 
         kvm_get_dirty_pages_log_range(section, d.dirty_bitmap, mask);
+
+        if (kvm_memcrypt_enabled() &&
+            kvm_sync_unencrypted_bitmap(kml, section, mem)) {
+            g_free(d.dirty_bitmap);
+            return -1;
+        }
+
         g_free(d.dirty_bitmap);
     }
 
