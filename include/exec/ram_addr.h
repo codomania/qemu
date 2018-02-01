@@ -287,7 +287,8 @@ static inline void cpu_physical_memory_set_dirty_range(ram_addr_t start,
 #if !defined(_WIN32)
 static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
                                                           ram_addr_t start,
-                                                          ram_addr_t pages)
+                                                          ram_addr_t pages,
+                                                          uint8_t mask)
 {
     unsigned long i, j;
     unsigned long page_number, c;
@@ -320,10 +321,16 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
             if (bitmap[k]) {
                 unsigned long temp = leul_to_cpu(bitmap[k]);
 
-                atomic_or(&blocks[DIRTY_MEMORY_MIGRATION][idx][offset], temp);
-                atomic_or(&blocks[DIRTY_MEMORY_VGA][idx][offset], temp);
+                if (mask & (1 << DIRTY_MEMORY_MIGRATION)) {
+                    atomic_or(&blocks[DIRTY_MEMORY_MIGRATION][idx][offset], temp);
+                }
+                if (mask & (1 << DIRTY_MEMORY_VGA)) {
+                    atomic_or(&blocks[DIRTY_MEMORY_VGA][idx][offset], temp);
+                }
                 if (tcg_enabled()) {
-                    atomic_or(&blocks[DIRTY_MEMORY_CODE][idx][offset], temp);
+                    if (mask & (1 << DIRTY_MEMORY_CODE)) {
+                        atomic_or(&blocks[DIRTY_MEMORY_CODE][idx][offset], temp);
+                    }
                 }
             }
 
