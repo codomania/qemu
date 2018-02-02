@@ -3189,3 +3189,47 @@
 # Since: 2.11
 ##
 { 'command': 'watchdog-set-action', 'data' : {'action': 'WatchdogAction'} }
+
+##
+# @SevInfo:
+#
+# Information about SEV support
+#
+# @enabled: true if SEV is active
+#
+# @api_major: SEV API major version
+#
+# @api_minor: SEV API minor version
+#
+# @build_id: SEV FW build id
+#
+# @policy: SEV policy value
+#
+# Since: 2.12
+##
+{ 'struct': 'SevInfo',
+    'data': { 'enabled': 'bool',
+              'api_major': 'uint8',
+              'api_minor' : 'uint8',
+              'build_id' : 'uint8',
+              'policy' : 'uint64'
+            }
+}
+
+##
+# @query-sev:
+#
+# Returns information about SEV
+#
+# Returns: @SevInfo
+#
+# Since: 2.12
+#
+# Example:
+#
+# -> { "execute": "query-sev" }
+# <- { "return": { "enabled": true, "api-major" : 0, "api-minor" : 0,
+#                  "build-id" : 0, "policy" : 0 } }
+#
+##
+{ 'command': 'query-sev', 'returns': 'SevInfo' }
