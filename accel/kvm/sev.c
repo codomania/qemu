@@ -405,7 +405,18 @@ sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
 uint64_t
 sev_get_policy(void)
 {
-    return UINT64_MAX;
+    struct kvm_sev_guest_status status = {};
+    int r, err;
+
+    r = sev_ioctl(KVM_SEV_GUEST_STATUS, &status, &err);
+    if (r) {
+        error_report("%s: failed to get platform status ret=%d"
+                     "fw_error='%d: %s'", __func__, r, err,
+                     fw_error_to_str(err));
+        return UINT64_MAX;
+    }
+
+    return status.policy;
 }
 
 static int
