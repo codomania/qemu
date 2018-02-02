@@ -125,6 +125,11 @@ uint64_t sev_get_policy(void)
     return UINT64_MAX;
 }
 
+char * sev_get_launch_measurement(void)
+{
+    return NULL;
+}
+
 bool kvm_memcrypt_enabled(void)
 {
     return false;
