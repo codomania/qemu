@@ -3263,3 +3263,40 @@
 #
 ##
 { 'command': 'query-sev-launch-measure', 'returns': 'SevLaunchMeasureInfo' }
+
+##
+# @SevMigrateInfo:
+#
+# SEV Guest migration information
+#
+# @pdh the platform diffie-hellman key encoded in base64
+#
+# @plat-cert the platform certificate chain encoded in base64
+#
+# Since: 2.12
+#
+##
+{ 'struct': 'SevMigrateInfo',
+    'data': {'pdh': 'str',
+             'plat-cert' : 'str'
+            } }
+
+##
+# @query-sev-migrate-info:
+#
+# Query the SEV guest migration information.
+#
+# Returns: The @SevMigrateInfo for the guest
+#
+# Since: 2.12
+#
+# Example:
+#
+# -> { "execute": "query-sev-migrate-info" }
+# <- { "return":
+#        { "pdh": "4l8LXeNlSPUDlXPJG5966/8%YZ",
+#          "plat-cert": "4l8LXeNlSPUDlXPJG5966/8%YZ"
+#        } }
+#
+##
+{ 'command': 'query-sev-migrate-info', 'returns': 'SevMigrateInfo' }

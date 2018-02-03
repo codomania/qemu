@@ -746,3 +746,17 @@ SevLaunchMeasureInfo *qmp_query_sev_launch_measure(Error **errp)
 
     return info;
 }
+
+SevMigrateInfo *qmp_query_sev_migrate_info(Error **errp)
+{
+    SevMigrateInfo *info = NULL;
+
+    if (sev_enabled()) {
+        info = g_malloc0(sizeof(*info));
+        sev_get_migration_info(&info->pdh, &info->plat_cert);
+    } else {
+        error_setg(errp, "SEV is not enabled");
+    }
+
+    return info;
+}
