@@ -420,6 +420,61 @@ sev_get_policy(void)
 }
 
 static int
+__sev_get_migration_info(guchar **pdh, size_t *pdh_len, guchar **plat_cert,
+                         size_t *plat_cert_len)
+{
+    guchar *pdh_data, *plat_cert_data;
+    struct sev_user_data_pdh_cert_export export = {};
+    int r, err;
+
+    /* query the certificate length */
+    r = sev_platform_ioctl(SEV_PDH_CERT_EXPORT, &export, &err);
+    if (r < 0) {
+        if (err != SEV_RET_INVALID_LEN) {
+            error_report("failed to export PDH cert ret=%d fw_err=%d (%s)",
+                         r, err, fw_error_to_str(err));
+            return 1;
+        }
+    }
+
+    pdh_data = g_new(guchar, export.pdh_cert_len);
+    plat_cert_data = g_new(guchar, export.cert_chain_len);
+    export.pdh_cert_address = (unsigned long)pdh_data;
+    export.cert_chain_address = (unsigned long)plat_cert_data;
+
+    r = sev_platform_ioctl(SEV_PDH_CERT_EXPORT, &export, &err);
+    if (r < 0) {
+        error_report("failed to export PDH cert ret=%d fw_err=%d (%s)",
+                     r, err, fw_error_to_str(err));
+        goto e_free;
+    }
+
+    *pdh = pdh_data;
+    *plat_cert = plat_cert_data;
+    return 0;
+
+e_free:
+    g_free(pdh_data);
+    g_free(plat_cert);
+    return 1;
+}
+
+void
+sev_get_migration_info(char **pdh, char **plat_cert)
+{
+    guchar *pdh_data, *plat_cert_data;
+    size_t pdh_data_len = 0, plat_cert_len = 0;
+
+    if (__sev_get_migration_info(&pdh_data, &pdh_data_len,
+                &plat_cert_data, &plat_cert_len)) {
+        return;
+    }
+
+    *pdh = g_base64_encode(pdh_data, pdh_data_len);;
+    *plat_cert = g_base64_encode(plat_cert_data, plat_cert_len);
+}
+
+static int
 sev_read_file_base64(const char *filename, guchar **data, gsize *len)
 {
     gsize sz;

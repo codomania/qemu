@@ -29,6 +29,7 @@ extern bool sev_enabled(void);
 extern void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build);
 extern uint64_t sev_get_policy(void);
 extern char * sev_get_launch_measurement(void);
+extern void sev_get_migration_info(char **pdh, char **plat_cert);
 
 typedef struct QSevGuestInfo QSevGuestInfo;
 typedef struct QSevGuestInfoClass QSevGuestInfoClass;
