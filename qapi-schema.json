@@ -3300,3 +3300,20 @@
 #
 ##
 { 'command': 'query-sev-migrate-info', 'returns': 'SevMigrateInfo' }
+
+##
+# @migrate-set-sev-info:
+#
+# The command is used to set the migration information from the target host
+#
+# @pdh the target host platform diffie-hellman key encoded in base64
+#
+# @plat-cert the target host platform certificate chain encoded in base64
+#
+# @amd-cert AMD certificate chain which include ASK and OCA encoded in base64
+#
+# Since: 2.12
+#
+##
+{ 'command': 'migrate-set-sev-info',
+  'data': { 'pdh': 'str', 'cert-chain': 'str', 'amd-cert' : 'str' }}
