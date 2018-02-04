@@ -154,6 +154,17 @@ sev_set_migration_info(const char *pdh, const char *plat_cert,
 {
 }
 
+int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr,
+                                    uint32_t size, uint64_t *bytes_sent)
+{
+    return 1;
+}
+
+int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr)
+{
+    return 1;
+}
+
 #ifndef CONFIG_USER_ONLY
 int kvm_irqchip_add_msi_route(KVMState *s, int vector, PCIDevice *dev)
 {
