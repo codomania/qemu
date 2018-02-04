@@ -30,6 +30,8 @@ extern void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build);
 extern uint64_t sev_get_policy(void);
 extern char * sev_get_launch_measurement(void);
 extern void sev_get_migration_info(char **pdh, char **plat_cert);
+extern void sev_set_migration_info(const char *pdh, const char *plat_cert,
+                                   const char *amd_cert);
 
 typedef struct QSevGuestInfo QSevGuestInfo;
 typedef struct QSevGuestInfoClass QSevGuestInfoClass;
@@ -71,6 +73,12 @@ typedef enum {
 struct SEVState {
     QSevGuestInfo *sev_info;
     gchar *measurement;
+    guchar *remote_pdh;
+    size_t remote_pdh_len;
+    guchar *remote_plat_cert;
+    size_t remote_plat_cert_len;
+    guchar *amd_cert;
+    size_t amd_cert_len;
 };
 
 typedef struct SEVState SEVState;

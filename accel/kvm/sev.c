@@ -474,6 +474,18 @@ sev_get_migration_info(char **pdh, char **plat_cert)
     *plat_cert = g_base64_encode(plat_cert_data, plat_cert_len);
 }
 
+void
+sev_set_migration_info(const char *pdh, const char *plat_cert,
+                       const char *amd_cert)
+{
+    SEVState *s = sev_state;
+
+    s->remote_pdh = g_base64_decode(pdh, &s->remote_pdh_len);
+    s->remote_plat_cert = g_base64_decode(plat_cert,
+                                          &s->remote_plat_cert_len);
+    s->amd_cert = g_base64_decode(amd_cert, &s->amd_cert_len);
+}
+
 static int
 sev_read_file_base64(const char *filename, guchar **data, gsize *len)
 {

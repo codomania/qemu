@@ -148,6 +148,12 @@ void sev_get_migration_info(char **pdh, char **plat_cert)
 {
 }
 
+void
+sev_set_migration_info(const char *pdh, const char *plat_cert,
+                       const char *amd_cert)
+{
+}
+
 #ifndef CONFIG_USER_ONLY
 int kvm_irqchip_add_msi_route(KVMState *s, int vector, PCIDevice *dev)
 {
