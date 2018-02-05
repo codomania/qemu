@@ -71,6 +71,8 @@
 #define RAM_SAVE_FLAG_COMPRESS_PAGE    0x100
 #define RAM_SAVE_FLAG_ENCRYPTED_PAGE   0x200
 
+#define RAM_SAVE_FLAG_UNENCRYPTED_BITMAP   0x400
+
 static inline bool is_zero_range(uint8_t *p, uint64_t size)
 {
     return buffer_is_zero(p, size);
@@ -2380,6 +2382,26 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
 }
 
 /**
+ * save_unencrypted_bitmap: function to send the unencrypted bitmap
+ */
+
+static void save_unencrypted_bitmap(QEMUFile *f)
+{
+    unsigned long *map = NULL;
+    unsigned long nbits;
+
+    kvm_get_unencrypted_bitmap(&map, &nbits);
+
+    if (!map)
+        return;
+
+    qemu_put_be64(f, RAM_SAVE_FLAG_UNENCRYPTED_BITMAP);
+    qemu_put_be64(f, nbits);
+    qemu_put_buffer(f, (uint8_t *)map,
+                    BITS_TO_LONGS(nbits) * sizeof(unsigned long));
+}
+
+/**
  * ram_save_complete: function called to send the remaining amount of ram
  *
  * Returns zero to indicate success
@@ -2401,6 +2423,11 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
     }
 
     ram_control_before_iterate(f, RAM_CONTROL_FINISH);
+
+    /* send unencrypted bitmap */
+    if (kvm_memcrypt_enabled()) {
+        save_unencrypted_bitmap(f);
+    }
 
     /* try transferring iterative blocks of memory */
 
@@ -2878,6 +2905,20 @@ static bool postcopy_is_running(void)
     return ps >= POSTCOPY_INCOMING_LISTENING && ps < POSTCOPY_INCOMING_END;
 }
 
+static int load_unencrypted_bitmap(QEMUFile *f)
+{
+    unsigned long nbits;
+    unsigned long *map;
+
+    nbits = qemu_get_be64(f);
+    map = bitmap_new(nbits);
+
+    qemu_get_buffer(f, (uint8_t *)map,
+                    BITS_TO_LONGS(nbits) * sizeof(unsigned long));
+
+    return kvm_set_unencrypted_bitmap(map, nbits);
+}
+
 static int ram_load(QEMUFile *f, void *opaque, int version_id)
 {
     int flags = 0, ret = 0, invalid_flags = 0;
@@ -3024,6 +3065,12 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
             if (kvm_memcrypt_load_incoming_page(f, host)) {
                     error_report("Failed to encrypted incoming data");
                     ret = -EINVAL;
+            }
+            break;
+        case RAM_SAVE_FLAG_UNENCRYPTED_BITMAP:
+            if (load_unencrypted_bitmap(f)) {
+                error_report("Failed to load unencrypted bitmap");
+                ret = -EINVAL;
             }
             break;
         case RAM_SAVE_FLAG_EOS:

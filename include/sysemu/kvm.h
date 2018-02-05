@@ -266,6 +266,16 @@ int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr, uint32_t size,
  */
 int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr);
 
+/*
+ * kvm_get_unencrypted_bitmap - get unencrypted bitmap range.
+ */
+int kvm_get_unencrypted_bitmap(unsigned long **map, unsigned long *nbits);
+
+/*
+ * kvm_set_unencrypted_bitmap - set unencrypted bitmap range.
+ */
+int kvm_set_unencrypted_bitmap(unsigned long *map, unsigned long nbits);
+
 #ifdef NEED_CPU_H
 #include "cpu.h"
 

@@ -214,6 +214,63 @@ qsev_guest_set_dh_cert_file(Object *obj, const char *value, Error **errp)
     s->dh_cert_file = g_strdup(value);
 }
 
+int
+sev_get_unencrypted_bitmap(unsigned long **map, uint64_t *nbits)
+{
+    struct kvm_sev_unencrypted_bitmap b = {};
+    unsigned long *bitmap;
+    int r;
+
+    r = sev_ioctl(KVM_SEV_GET_UNENCRYPTED_BITMAP, &b, NULL);
+    if (r) {
+        error_report("Failed to query unencrypted bitmap size");
+        return r;
+    }
+
+    if (!b.nbits) {
+        error_report("Failed to get unencrypted bitmap size");
+        return 1;
+    }
+
+    bitmap = bitmap_new(b.nbits);
+    if (!bitmap)
+        return 1;
+
+    b.bitmap = bitmap;
+    trace_kvm_sev_get_unencrypted_bitmap(bitmap, b.nbits);
+    r = sev_ioctl(KVM_SEV_GET_UNENCRYPTED_BITMAP, &b, NULL);
+    if (r)
+        goto e_free;
+
+    *map = bitmap;
+    *nbits = b.nbits;
+
+    return 0;
+
+e_free:
+    g_free(bitmap);
+    return r;
+}
+
+int
+sev_set_unencrypted_bitmap(unsigned long *map, uint64_t nbits)
+{
+    struct kvm_sev_unencrypted_bitmap b = {};
+    int r;
+
+    b.bitmap = map;
+    b.nbits = nbits;
+
+    trace_kvm_sev_set_unencrypted_bitmap(map, nbits);
+    r = sev_ioctl(KVM_SEV_SET_UNENCRYPTED_BITMAP, &b, NULL);
+    if (r) {
+        error_report("Failed to query unencrypted bitmap size");
+        return r;
+    }
+
+    return 0;
+}
+
 static char *
 qsev_guest_get_sev_device(Object *obj, Error **errp)
 {

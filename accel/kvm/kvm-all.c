@@ -113,6 +113,8 @@ struct KVMState
             uint8_t *ptr, uint32_t sz, uint64_t *bytes_sent);
     int (*memcrypt_load_incoming_page)(void *ehandle, QEMUFile *f,
             uint8_t *ptr);
+    int (*get_unencrypted_bitmap)(unsigned long **map, unsigned long *nbits);
+    int (*set_unencrypted_bitmap)(unsigned long *map, unsigned long nbits);
 };
 
 KVMState *kvm_state;
@@ -194,6 +196,24 @@ int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr)
         kvm_state->memcrypt_load_incoming_page) {
         return kvm_state->memcrypt_load_incoming_page(kvm_state->memcrypt_handle,
                     f, ptr);
+    }
+
+    return 1;
+}
+
+int kvm_set_unencrypted_bitmap(unsigned long *map, unsigned long nbits)
+{
+    if (kvm_state->set_unencrypted_bitmap) {
+        return kvm_state->set_unencrypted_bitmap(map, nbits);
+    }
+
+    return 1;
+}
+
+int kvm_get_unencrypted_bitmap(unsigned long **map, unsigned long *nbits)
+{
+    if (kvm_state->get_unencrypted_bitmap) {
+        return kvm_state->get_unencrypted_bitmap(map, nbits);
     }
 
     return 1;
@@ -1742,6 +1762,8 @@ static int kvm_init(MachineState *ms)
         kvm_state->memcrypt_debug_ops = sev_set_debug_ops;
         kvm_state->memcrypt_save_outgoing_page = sev_save_outgoing_page;
         kvm_state->memcrypt_load_incoming_page = sev_load_incoming_page;
+        kvm_state->get_unencrypted_bitmap = sev_get_unencrypted_bitmap;
+        kvm_state->set_unencrypted_bitmap = sev_set_unencrypted_bitmap;
     }
 
     ret = kvm_arch_init(ms, s);
