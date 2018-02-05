@@ -700,6 +700,24 @@ sev_launch_finish(SEVState *s)
     sev_set_guest_state(SEV_STATE_RUNNING);
 }
 
+static int
+sev_receive_finish(SEVState *s)
+{
+    int error, ret = 1;
+
+    trace_kvm_sev_receive_finish();
+    ret = sev_ioctl(KVM_SEV_RECEIVE_FINISH, 0, &error);
+    if (ret) {
+        error_report("%s: RECEIVE_FINISH ret=%d fw_error=%d '%s'\n",
+                __func__, ret, error, fw_error_to_str(error));
+        goto err;
+    }
+
+    sev_set_guest_state(SEV_STATE_RUNNING);
+err:
+    return ret;
+}
+
 static void
 sev_vm_state_change(void *opaque, int running, RunState state)
 {
@@ -707,7 +725,11 @@ sev_vm_state_change(void *opaque, int running, RunState state)
 
     if (running) {
         if (!sev_check_state(SEV_STATE_RUNNING)) {
-            sev_launch_finish(s);
+            if (sev_check_state(SEV_STATE_RUPDATE)) {
+                sev_receive_finish(s);
+            } else if (sev_check_state(SEV_STATE_SECRET)) {
+                sev_launch_finish(s);
+            }
         }
     }
 }
@@ -797,10 +819,12 @@ sev_guest_init(const char *id)
         goto err;
     }
 
-    ret = sev_launch_start(s);
-    if (ret) {
-        error_report("%s: failed to create encryption context", __func__);
-        goto err;
+    if (!runstate_check(RUN_STATE_INMIGRATE)) {
+        ret = sev_launch_start(s);
+        if (ret) {
+            error_report("%s: failed to create encryption context", __func__);
+            goto err;
+        }
     }
 
 
@@ -1072,6 +1096,126 @@ sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
     }
 
     return sev_send_update_data(s, f, ptr, sz, bytes_sent);
+}
+
+static int
+sev_receive_start(QSevGuestInfo *sev, QEMUFile *f)
+{
+    int ret = 1;
+    int fw_error;
+    struct kvm_sev_receive_start *start;
+    gchar *session = NULL, *pdh_cert = NULL;
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        return 1;
+    }
+
+    /* get SEV guest handle */
+    start->handle = object_property_get_int(OBJECT(sev), "handle",
+            &error_abort);
+
+    /* get the source policy */
+    start->policy = qemu_get_be32(f);
+
+    /* get source PDH key */
+    start->pdh_len = qemu_get_be32(f);
+    pdh_cert = g_malloc(start->pdh_len);
+    if (!pdh_cert) {
+        goto err;
+    }
+    qemu_get_buffer(f, (uint8_t *)pdh_cert, start->pdh_len);
+    start->pdh_uaddr = (unsigned long)pdh_cert;
+
+    /* get source session data */
+    start->session_len = qemu_get_be32(f);
+    session = g_malloc(start->session_len);
+    if (!session) {
+        goto err;
+    }
+    qemu_get_buffer(f, (uint8_t *)session, start->session_len);
+    start->session_uaddr = (unsigned long)session;
+
+    trace_kvm_sev_receive_start(start->policy, session, pdh_cert);
+
+    ret = sev_ioctl(KVM_SEV_RECEIVE_START, start, &fw_error);
+    if (ret < 0) {
+        error_report("Error RECEIVE_START ret=%d fw_error=%d '%s'",
+                ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+
+    object_property_set_int(OBJECT(sev), start->handle, "handle", &error_abort);
+    sev_set_guest_state(SEV_STATE_RUPDATE);
+err:
+    g_free(start);
+    g_free(session);
+    g_free(pdh_cert);
+
+    return ret;
+}
+
+static int sev_receive_update_data(QEMUFile *f, uint8_t *ptr)
+{
+    int ret = 1, fw_error = 0;
+    gchar *hdr = NULL, *trans = NULL;
+    struct kvm_sev_receive_update_data *update;
+
+    update = g_malloc0(sizeof(*update));
+    if (!update) {
+        return 1;
+    }
+
+    /* get packet header */
+    update->hdr_len = qemu_get_be32(f);
+    hdr = g_malloc(update->hdr_len);
+    if (!hdr) {
+        goto err;
+    }
+    qemu_get_buffer(f, (uint8_t *)hdr, update->hdr_len);
+    update->hdr_uaddr = (unsigned long)hdr;
+
+    /* get transport buffer */
+    update->trans_len = qemu_get_be32(f);
+    trans = g_malloc(update->trans_len);
+    if (!trans) {
+        goto err;
+    }
+    update->trans_uaddr = (unsigned long)trans;
+    qemu_get_buffer(f, (uint8_t *)update->trans_uaddr, update->trans_len);
+
+    update->guest_uaddr = (unsigned long) ptr;
+    update->guest_len = update->trans_len;
+
+    trace_kvm_sev_receive_update_data(trans, ptr, update->guest_len,
+            hdr, update->hdr_len);
+
+    ret = sev_ioctl(KVM_SEV_RECEIVE_UPDATE_DATA, update, &fw_error);
+    if (ret) {
+        error_report("Error RECEIVE_UPDATE_DATA ret=%d fw_error=%d '%s'",
+                ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+err:
+    g_free(trans);
+    g_free(update);
+    g_free(hdr);
+    return ret;
+}
+
+int sev_load_incoming_page(void *handle, QEMUFile *f, uint8_t *ptr)
+{
+    SEVState *s = (SEVState *)handle;
+
+    /* If this is first buffer and SEV is not in recieiving state then
+     * use RECEIVE_START command to create a encryption context.
+     */
+    if (!sev_check_state(SEV_STATE_RUPDATE) &&
+        sev_receive_start(s->sev_info, f)) {
+        return 1;
+    }
+
+    return sev_receive_update_data(f, ptr);
 }
 
 static void
