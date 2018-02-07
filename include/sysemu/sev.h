@@ -14,6 +14,8 @@
 #ifndef QEMU_SEV_H
 #define QEMU_SEV_H
 
+#include <linux/kvm.h>
+
 #include "qom/object.h"
 #include "qapi/error.h"
 #include "sysemu/kvm.h"
@@ -22,6 +24,12 @@
 #define TYPE_QSEV_GUEST_INFO "sev-guest"
 #define QSEV_GUEST_INFO(obj)                  \
     OBJECT_CHECK(QSevGuestInfo, (obj), TYPE_QSEV_GUEST_INFO)
+
+extern bool sev_enabled(void);
+extern uint64_t sev_get_me_mask(void);
+extern void sev_get_current_state(char **state);
+extern void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build);
+extern void sev_get_policy(uint32_t *policy);
 
 typedef struct QSevGuestInfo QSevGuestInfo;
 typedef struct QSevGuestInfoClass QSevGuestInfoClass;
@@ -49,6 +57,14 @@ struct QSevGuestInfo {
 struct QSevGuestInfoClass {
     ObjectClass parent_class;
 };
+
+struct SEVState {
+    QSevGuestInfo *sev_info;
+};
+
+typedef struct SEVState SEVState;
+
+void *sev_guest_init(const char *id);
 
 #endif
 
