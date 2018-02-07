@@ -30,6 +30,7 @@ extern uint64_t sev_get_me_mask(void);
 extern void sev_get_current_state(char **state);
 extern void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build);
 extern void sev_get_policy(uint32_t *policy);
+extern char *sev_get_launch_measurement(void);
 
 typedef struct QSevGuestInfo QSevGuestInfo;
 typedef struct QSevGuestInfoClass QSevGuestInfoClass;
@@ -70,6 +71,7 @@ typedef enum {
 
 struct SEVState {
     QSevGuestInfo *sev_info;
+    gchar *measurement;
 };
 
 typedef struct SEVState SEVState;
