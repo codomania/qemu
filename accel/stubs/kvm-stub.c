@@ -14,6 +14,7 @@
 #include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/kvm.h"
+#include "sysemu/sev.h"
 
 #ifndef CONFIG_USER_ONLY
 #include "hw/pci/msi.h"
@@ -32,6 +33,11 @@ bool kvm_allowed;
 bool kvm_readonly_mem_allowed;
 bool kvm_ioeventfd_any_length_allowed;
 bool kvm_msi_use_devid;
+
+bool sev_allowed;
+uint8_t sev_fw_major;
+uint8_t sev_fw_minor;
+uint8_t sev_fw_build;
 
 int kvm_destroy_vcpu(CPUState *cpu)
 {
@@ -103,6 +109,28 @@ int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr)
 int kvm_on_sigbus(int code, void *addr)
 {
     return 1;
+}
+
+void sev_get_current_state(char **state)
+{
+}
+
+bool sev_enabled(void)
+{
+    return false;
+}
+
+uint64_t sev_get_me_mask(void)
+{
+    return ~0UL;
+}
+
+void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
+{
+}
+
+void sev_get_policy(uint32_t *policy)
+{
 }
 
 #ifndef CONFIG_USER_ONLY
