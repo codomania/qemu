@@ -2922,3 +2922,22 @@ void hmp_info_memory_size_summary(Monitor *mon, const QDict *qdict)
     }
     hmp_handle_error(mon, &err);
 }
+
+void hmp_info_sev(Monitor *mon, const QDict *qdict)
+{
+    SevInfo *info;
+
+    info = qmp_query_sev(NULL);
+    monitor_printf(mon, "sev support: ");
+    monitor_printf(mon, "%s\n", info->enabled ? "enabled" : "disabled");
+
+    if (info->enabled) {
+        monitor_printf(mon, "state: %s\n", info->state);
+        monitor_printf(mon, "policy: 0x%x\n", info->policy);
+        monitor_printf(mon, "build id: %u\n", info->build_id);
+        monitor_printf(mon, "api version: %u.%u\n",
+                       info->api_major, info->api_minor);
+    }
+
+    qapi_free_SevInfo(info);
+}

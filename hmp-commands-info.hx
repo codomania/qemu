@@ -867,6 +867,20 @@ Display the amount of initially allocated and present hotpluggable (if
 enabled) memory in bytes.
 ETEXI
 
+    {
+        .name       = "sev",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show SEV information",
+        .cmd        = hmp_info_sev,
+    },
+
+STEXI
+@item info sev
+@findex info sev
+Show SEV information.
+ETEXI
+
 STEXI
 @end table
 ETEXI
