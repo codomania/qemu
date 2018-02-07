@@ -733,3 +733,17 @@ SevInfo *qmp_query_sev(Error **errp)
 
     return info;
 }
+
+SevLaunchMeasureInfo *qmp_query_sev_launch_measure(Error **errp)
+{
+    SevLaunchMeasureInfo *info = NULL;
+
+    if (sev_enabled()) {
+        info = g_malloc0(sizeof(*info));
+        info->data = sev_get_launch_measurement();
+    } else {
+        error_setg(errp, "SEV is not enabled");
+    }
+
+    return info;
+}
