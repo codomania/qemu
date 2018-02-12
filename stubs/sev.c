@@ -15,6 +15,12 @@
 #include "qemu-common.h"
 #include "sysemu/sev.h"
 
+int sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
+                           uint32_t sz, uint64_t *bytes_sent)
+{
+    return 1;
+}
+
 void
 sev_set_migration_info(const char *pdh, const char *plat_cert,
                        const char *amd_cert)
