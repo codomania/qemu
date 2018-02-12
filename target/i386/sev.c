@@ -18,9 +18,73 @@
 #include "sysemu/kvm.h"
 #include "sysemu/sev.h"
 #include "sysemu/sysemu.h"
+#include "trace.h"
 
 #define DEFAULT_GUEST_POLICY    0x1 /* disable debug */
 #define DEFAULT_SEV_DEVICE      "/dev/sev"
+
+static uint64_t me_mask;
+static bool sev_active;
+static int sev_fd;
+
+#define SEV_FW_MAX_ERROR      0x17
+
+static const char *const sev_fw_errlist[] = {
+    "",
+    "Platform state is invalid",
+    "Guest state is invalid",
+    "Platform configuration is invalid",
+    "Buffer too small",
+    "Platform is already owned",
+    "Certificate is invalid",
+    "Policy is not allowed",
+    "Guest is not active",
+    "Invalid address",
+    "Bad signature",
+    "Bad measurement",
+    "Asid is already owned",
+    "Invalid ASID",
+    "WBINVD is required",
+    "DF_FLUSH is required",
+    "Guest handle is invalid",
+    "Invalid command",
+    "Guest is active",
+    "Hardware error",
+    "Hardware unsafe",
+    "Feature not supported",
+    "Invalid parameter"
+};
+
+static int
+sev_ioctl(int cmd, void *data, int *error)
+{
+    int r;
+    struct kvm_sev_cmd input;
+
+    memset(&input, 0x0, sizeof(input));
+
+    input.id = cmd;
+    input.sev_fd = sev_fd;
+    input.data = (__u64)data;
+
+    r = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_OP, &input);
+
+    if (error) {
+        *error = input.error;
+    }
+
+    return r;
+}
+
+static const char *
+fw_error_to_str(int code)
+{
+    if (code >= SEV_FW_MAX_ERROR) {
+        return "unknown error";
+    }
+
+    return sev_fw_errlist[code];
+}
 
 static void
 qsev_guest_finalize(Object *obj)
@@ -204,6 +268,103 @@ static const TypeInfo qsev_guest_info = {
         { }
     }
 };
+
+static QSevGuestInfo *
+lookup_sev_guest_info(const char *id)
+{
+    Object *obj;
+    QSevGuestInfo *info;
+
+    obj = object_resolve_path_component(object_get_objects_root(), id);
+    if (!obj) {
+        return NULL;
+    }
+
+    info = (QSevGuestInfo *)
+            object_dynamic_cast(obj, TYPE_QSEV_GUEST_INFO);
+    if (!info) {
+        return NULL;
+    }
+
+    return info;
+}
+
+uint64_t
+sev_get_me_mask(void)
+{
+    return ~me_mask;
+}
+
+void
+sev_get_current_state(char **state)
+{
+}
+
+bool
+sev_enabled(void)
+{
+    return sev_active;
+}
+
+void
+sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
+{
+}
+
+void
+sev_get_policy(uint32_t *policy)
+{
+}
+
+void *
+sev_guest_init(const char *id)
+{
+    SEVState *s;
+    char *devname;
+    int ret, fw_error;
+    uint32_t host_cbitpos, cbitpos;
+
+    s = g_new0(SEVState, 1);
+    s->sev_info = lookup_sev_guest_info(id);
+    if (!s->sev_info) {
+        error_report("%s: '%s' is not a valid '%s' object",
+                     __func__, id, TYPE_QSEV_GUEST_INFO);
+        goto err;
+    }
+
+    host_cbitpos = sev_get_host_cbitpos();
+    cbitpos = object_property_get_int(OBJECT(s->sev_info), "cbitpos", NULL);
+    if (host_cbitpos != cbitpos) {
+        error_report("%s: cbitpos check failed, host '%d' request '%d'",
+                     __func__, host_cbitpos, cbitpos);
+        goto err;
+    }
+
+    me_mask = (1UL << cbitpos);
+
+    devname = object_property_get_str(OBJECT(s->sev_info), "sev-device", NULL);
+    sev_fd = open(devname, O_RDWR);
+    if (sev_fd < 0) {
+        error_report("%s: Failed to open %s '%s'", __func__,
+                     devname, strerror(errno));
+        goto err;
+    }
+    g_free(devname);
+
+    trace_kvm_sev_init();
+    ret = sev_ioctl(KVM_SEV_INIT, NULL, &fw_error);
+    if (ret) {
+        error_report("%s: failed to initialize ret=%d fw_error=%d '%s'",
+                     __func__, ret, fw_error, fw_error_to_str(fw_error));
+        goto err;
+    }
+
+    sev_active = true;
+    return s;
+err:
+    g_free(s);
+    return NULL;
+}
 
 static void
 sev_register_types(void)
