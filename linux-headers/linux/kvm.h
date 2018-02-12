@@ -1370,8 +1370,19 @@ struct kvm_enc_region {
 	__u64 size;
 };
 
+/* for KVM_GET_UNENCRYPTED_BITMAP */
+struct kvm_unencrypted_bitmap {
+	__u32 slot;
+	__u32 padding1;
+	union {
+		void *bitmap; /* one bit per page */
+		__u64 padding2;
+	};
+};
+
 #define KVM_MEMORY_ENCRYPT_REG_REGION    _IOR(KVMIO, 0xbb, struct kvm_enc_region)
 #define KVM_MEMORY_ENCRYPT_UNREG_REGION  _IOR(KVMIO, 0xbc, struct kvm_enc_region)
+#define KVM_GET_UNENCRYPTED_BITMAP  	 _IOW(KVMIO, 0xbd, struct kvm_unencrypted_bitmap)
 
 /* Secure Encrypted Virtualization command */
 enum sev_cmd_id {
