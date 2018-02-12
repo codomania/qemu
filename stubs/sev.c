@@ -16,6 +16,12 @@
 #include "sysemu/sev.h"
 
 void
+sev_set_migration_info(const char *pdh, const char *plat_cert,
+                       const char *amd_cert)
+{
+}
+
+void
 sev_get_migration_info(char **pdh, char **plat_cert)
 {
 }
