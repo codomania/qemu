@@ -3319,3 +3319,20 @@
 ##
 { 'command': 'migrate-set-sev-info',
   'data': { 'pdh': 'str', 'plat-cert': 'str', 'amd-cert' : 'str' }}
+
+##
+# @sev-inject-launch-secret:
+#
+# The command is used to inject a secret blob in SEV guest memory
+#
+# @packet-header the launch secret packet header encoded in base64
+#
+# @secret the launch secret data to be injected encoded in base64
+#
+# @address the guest physical address where secret need to be injected
+#
+# Since: 2.12
+#
+##
+{ 'command': 'sev-inject-launch-secret',
+  'data': { 'packet-header': 'str', 'secret': 'str', 'address' : 'uint64' }}

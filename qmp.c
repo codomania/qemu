@@ -776,3 +776,11 @@ void qmp_migrate_set_sev_info(const char *pdh, const char *plat_cert,
         error_setg(errp, "SEV is not enabled");
     }
 }
+
+void qmp_sev_inject_launch_secret(const char *hdr, const char *secret,
+                                  uint64_t address, Error **errp)
+{
+    if (sev_inject_launch_secret(hdr, secret, address)) {
+        error_setg(errp, "Failed to inject secret");
+    }
+}
