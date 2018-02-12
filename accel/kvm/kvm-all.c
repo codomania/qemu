@@ -496,13 +496,13 @@ static void kvm_log_stop(MemoryListener *listener,
 
 /* get kvm's dirty pages bitmap and update qemu's */
 static int kvm_get_dirty_pages_log_range(MemoryRegionSection *section,
-                                         unsigned long *bitmap)
+                                         unsigned long *bitmap, uint8_t mask)
 {
     ram_addr_t start = section->offset_within_region +
                        memory_region_get_ram_addr(section->mr);
     ram_addr_t pages = int128_get64(section->size) / getpagesize();
 
-    cpu_physical_memory_set_dirty_lebitmap(bitmap, start, pages);
+    cpu_physical_memory_set_dirty_lebitmap(bitmap, start, pages, mask);
     return 0;
 }
 
@@ -524,6 +524,7 @@ static int kvm_physical_sync_dirty_bitmap(KVMMemoryListener *kml,
     struct kvm_dirty_log d = {};
     KVMSlot *mem;
     hwaddr start_addr, size;
+    uint8_t mask = DIRTY_CLIENTS_ALL;
 
     size = kvm_align_section(section, &start_addr);
     if (size) {
@@ -556,7 +557,7 @@ static int kvm_physical_sync_dirty_bitmap(KVMMemoryListener *kml,
             return -1;
         }
 
-        kvm_get_dirty_pages_log_range(section, d.dirty_bitmap);
+        kvm_get_dirty_pages_log_range(section, d.dirty_bitmap, mask);
         g_free(d.dirty_bitmap);
     }
 
