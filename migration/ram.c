@@ -51,6 +51,7 @@
 #include "qemu/rcu_queue.h"
 #include "migration/colo.h"
 #include "migration/block.h"
+#include "sysemu/kvm.h"
 
 /***********************************************************/
 /* ram save/restore */
@@ -70,6 +71,7 @@
 #define RAM_SAVE_FLAG_XBZRLE   0x40
 /* 0x80 is reserved in migration.h start with 0x100 next */
 #define RAM_SAVE_FLAG_COMPRESS_PAGE    0x100
+#define RAM_SAVE_FLAG_ENCRYPTED_PAGE   0x200
 
 static inline bool is_zero_range(uint8_t *p, uint64_t size)
 {
@@ -804,6 +806,9 @@ static void migration_bitmap_sync_range(RAMState *rs, RAMBlock *rb,
     rs->migration_dirty_pages +=
         cpu_physical_memory_sync_dirty_bitmap(rb, start, length,
                                               &rs->num_dirty_pages_period);
+    if (kvm_memcrypt_enabled()) {
+        cpu_physical_memory_sync_unencrypted_bitmap(rb, start, length);
+    }
 }
 
 /**
@@ -1024,6 +1029,36 @@ static int ram_save_page(RAMState *rs, PageSearchStatus *pss, bool last_stage)
     XBZRLE_cache_unlock();
 
     return pages;
+}
+
+/**
+ * ram_save_encrypted_page - send the given encrypted page to the stream
+ */
+static int ram_save_encrypted_page(RAMState *rs, PageSearchStatus *pss,
+                                   bool last_stage)
+{
+    int ret;
+    uint8_t *p;
+    RAMBlock *block = pss->block;
+    ram_addr_t offset = pss->page << TARGET_PAGE_BITS;
+    uint64_t bytes_xmit;
+
+    p = block->host + offset;
+
+    ram_counters.transferred +=
+        save_page_header(rs, rs->f, block,
+                    offset | RAM_SAVE_FLAG_ENCRYPTED_PAGE);
+
+    ret = kvm_memcrypt_save_outgoing_page(rs->f, p,
+                        TARGET_PAGE_SIZE, &bytes_xmit);
+    if (ret) {
+        return -1;
+    }
+
+    ram_counters.transferred += bytes_xmit;
+    ram_counters.normal++;
+
+    return 1;
 }
 
 static int do_compress_ram_page(QEMUFile *f, RAMBlock *block,
@@ -1430,6 +1465,22 @@ err:
 }
 
 /**
+ * unencrypted_test_bitmap: check if page is unencrypted.
+ *
+ * Returns a bool indicating whether page is unencrypted.
+ */
+static bool unencrypted_test_bitmap(RAMState *rs, RAMBlock *block,
+                                    unsigned long page)
+{
+    /* ROM devices always contains unencrypted data */
+    if (memory_region_is_rom(block->mr)) {
+        return true;
+    }
+
+    return test_bit(page, block->unencmap);
+}
+
+/**
  * ram_save_target_page: save one target page
  *
  * Returns the number of pages written
@@ -1447,11 +1498,21 @@ static int ram_save_target_page(RAMState *rs, PageSearchStatus *pss,
     /* Check the pages is dirty and if it is send it */
     if (migration_bitmap_clear_dirty(rs, pss->block, pss->page)) {
         /*
+         * If memory encryption is enabled then use memory encryption APIs
+         * to write the outgoing buffer to the wire. The encryption APIs
+         * will re-encrypt the data with transport key so that data is prototect
+         * on the wire.
+         */
+        if (kvm_memcrypt_enabled() &&
+            !unencrypted_test_bitmap(rs, pss->block, pss->page)) {
+            res = ram_save_encrypted_page(rs, pss, last_stage);
+        }
+        /*
          * If xbzrle is on, stop using the data compression after first
          * round of migration even if compression is enabled. In theory,
          * xbzrle can do better than compression.
          */
-        if (migrate_use_compression() &&
+        else if (migrate_use_compression() &&
             (rs->ram_bulk_stage || !migrate_use_xbzrle())) {
             res = ram_save_compressed_page(rs, pss, last_stage);
         } else {
@@ -1640,6 +1701,8 @@ static void ram_save_cleanup(void *opaque)
         block->bmap = NULL;
         g_free(block->unsentmap);
         block->unsentmap = NULL;
+        g_free(block->unencmap);
+        block->unencmap = NULL;
     }
 
     xbzrle_cleanup();
@@ -2150,6 +2213,10 @@ static void ram_list_init_bitmaps(void)
             if (migrate_postcopy_ram()) {
                 block->unsentmap = bitmap_new(pages);
                 bitmap_set(block->unsentmap, 0, pages);
+            }
+            if (kvm_memcrypt_enabled()) {
+                block->unencmap = bitmap_new(pages);
+                bitmap_clear(block->unencmap, 0, pages);
             }
         }
     }
@@ -2864,7 +2931,8 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
         }
 
         if (flags & (RAM_SAVE_FLAG_ZERO | RAM_SAVE_FLAG_PAGE |
-                     RAM_SAVE_FLAG_COMPRESS_PAGE | RAM_SAVE_FLAG_XBZRLE)) {
+                     RAM_SAVE_FLAG_COMPRESS_PAGE | RAM_SAVE_FLAG_XBZRLE |
+                     RAM_SAVE_FLAG_ENCRYPTED_PAGE)) {
             RAMBlock *block = ram_block_from_stream(f, flags);
 
             host = host_from_ram_block_offset(block, addr);
@@ -2951,6 +3019,12 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
                              RAM_ADDR_FMT, addr);
                 ret = -EINVAL;
                 break;
+            }
+            break;
+        case RAM_SAVE_FLAG_ENCRYPTED_PAGE:
+            if (kvm_memcrypt_load_incoming_page(f, host)) {
+                    error_report("Failed to encrypted incoming data");
+                    ret = -EINVAL;
             }
             break;
         case RAM_SAVE_FLAG_EOS:
