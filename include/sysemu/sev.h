@@ -93,5 +93,7 @@ void sev_set_debug_ops(void *handle, MemoryRegion *mr);
 int sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
                            uint32_t sz, uint64_t *bytes_sent);
 int sev_load_incoming_page(void *handle, QEMUFile *f, uint8_t *ptr);
+int sev_inject_launch_secret(const char *hdr, const char *secret,
+                             uint64_t gpa);
 #endif
 
