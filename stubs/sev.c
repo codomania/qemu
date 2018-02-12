@@ -15,6 +15,11 @@
 #include "qemu-common.h"
 #include "sysemu/sev.h"
 
+void
+sev_get_migration_info(char **pdh, char **plat_cert)
+{
+}
+
 void sev_set_debug_ops(void *handle, MemoryRegion *mr)
 {
 }
