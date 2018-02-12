@@ -204,6 +204,7 @@ static bool query_is_blacklisted(const char *cmd)
         "query-pci",              /* CONFIG_PCI */
         /* Success depends on launching SEV guest */
         "query-sev-launch-measure",
+        "migrate-set-sev-info",
         NULL
     };
     int i;
