@@ -39,6 +39,7 @@
 #include "qom/object_interfaces.h"
 #include "hw/mem/pc-dimm.h"
 #include "hw/acpi/acpi_dev_interface.h"
+#include "sysemu/sev.h"
 
 NameInfo *qmp_query_name(Error **errp)
 {
@@ -718,4 +719,9 @@ MemoryInfo *qmp_query_memory_size_summary(Error **errp)
         mem_info->plugged_memory != (uint64_t)-1;
 
     return mem_info;
+}
+
+SevInfo *qmp_query_sev(Error **errp)
+{
+    return NULL;
 }
