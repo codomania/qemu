@@ -57,3 +57,8 @@ void sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
 void sev_get_policy(uint32_t *policy)
 {
 }
+
+char *sev_get_launch_measurement(void)
+{
+    return NULL;
+}
