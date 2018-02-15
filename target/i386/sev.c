@@ -21,6 +21,9 @@
 #include "trace.h"
 #include "qapi-event.h"
 
+#include <sys/ioctl.h>
+#include <linux/psp-sev.h>
+
 #define DEFAULT_GUEST_POLICY    0x1 /* disable debug */
 #define DEFAULT_SEV_DEVICE      "/dev/sev"
 #define GUEST_POLICY_DBG_BIT    0x1
@@ -79,6 +82,22 @@ sev_ioctl(int cmd, void *data, int *error)
 
     if (error) {
         *error = input.error;
+    }
+
+    return r;
+}
+
+static int
+sev_platform_ioctl(int cmd, void *data, int *error)
+{
+    int r;
+    struct sev_issue_cmd arg;
+
+    arg.cmd = cmd;
+    arg.data = (unsigned long)data;
+    r = ioctl(sev_fd, SEV_ISSUE_CMD, &arg);
+    if (error) {
+        *error = arg.error;
     }
 
     return r;
@@ -399,6 +418,20 @@ sev_enabled(void)
 void
 sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
 {
+    struct sev_user_data_status status = {};
+    int r, err;
+
+    r = sev_platform_ioctl(SEV_PLATFORM_STATUS, &status, &err);
+    if (r) {
+        error_report("%s: failed to get platform status ret=%d"
+                     "fw_error='%d: %s'", __func__, r, err,
+                     fw_error_to_str(err));
+        return;
+    }
+
+    *major = status.api_major;
+    *minor = status.api_minor;
+    *build = status.build;
 }
 
 void
