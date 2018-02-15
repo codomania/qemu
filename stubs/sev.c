@@ -15,6 +15,11 @@
 #include "qemu-common.h"
 #include "sysemu/sev.h"
 
+int sev_encrypt_data(void *handle, uint8_t *ptr, uint64_t len)
+{
+    return 1;
+}
+
 SevState sev_get_current_state(void)
 {
     return SEV_STATE_UNINIT;
