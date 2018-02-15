@@ -29,6 +29,8 @@ static int sev_fd;
 static uint32_t x86_cbitpos;
 static uint32_t x86_reduced_phys_bits;
 
+static SevState current_sev_guest_state = SEV_STATE_UNINIT;
+
 static const char *const sev_fw_errlist[] = {
     "",
     "Platform state is invalid",
@@ -86,6 +88,16 @@ fw_error_to_str(int code)
     }
 
     return sev_fw_errlist[code];
+}
+
+static void
+sev_set_guest_state(SevState new_state)
+{
+    assert(new_state < SEV_STATE__MAX);
+
+    trace_kvm_sev_change_state(SevState_str(current_sev_guest_state),
+                               SevState_str(new_state));
+    current_sev_guest_state = new_state;
 }
 
 static void
@@ -365,7 +377,7 @@ sev_get_reduced_phys_bits(void)
 SevState
 sev_get_current_state(void)
 {
-    return SEV_STATE_UNINIT;
+    return current_sev_guest_state;
 }
 
 bool
@@ -382,6 +394,76 @@ sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
 void
 sev_get_policy(uint32_t *policy)
 {
+}
+
+static int
+sev_read_file_base64(const char *filename, guchar **data, gsize *len)
+{
+    gsize sz;
+    gchar *base64;
+    GError *error = NULL;
+
+    if (!g_file_get_contents(filename, &base64, &sz, &error)) {
+        error_report("failed to read '%s' (%s)", filename, error->message);
+        return -1;
+    }
+
+    *data = g_base64_decode(base64, len);
+    return 0;
+}
+
+static int
+sev_launch_start(SEVState *s)
+{
+    gsize sz;
+    int ret = 1;
+    int fw_error;
+    QSevGuestInfo *sev = s->sev_info;
+    struct kvm_sev_launch_start *start;
+    guchar *session = NULL, *dh_cert = NULL;
+
+    start = g_malloc0(sizeof(*start));
+    if (!start) {
+        return 1;
+    }
+
+    start->handle = object_property_get_int(OBJECT(sev), "handle",
+                                            &error_abort);
+    start->policy = object_property_get_int(OBJECT(sev), "policy",
+                                            &error_abort);
+    if (sev->session_file) {
+        if (sev_read_file_base64(sev->session_file, &session, &sz) < 0) {
+            return 1;
+        }
+        start->session_uaddr = (unsigned long)session;
+        start->session_len = sz;
+    }
+
+    if (sev->dh_cert_file) {
+        if (sev_read_file_base64(sev->dh_cert_file, &dh_cert, &sz) < 0) {
+            return 1;
+        }
+        start->dh_uaddr = (unsigned long)dh_cert;
+        start->dh_len = sz;
+    }
+
+    trace_kvm_sev_launch_start(start->policy, session, dh_cert);
+    ret = sev_ioctl(KVM_SEV_LAUNCH_START, start, &fw_error);
+    if (ret < 0) {
+        error_report("%s: LAUNCH_START ret=%d fw_error=%d '%s'",
+                __func__, ret, fw_error, fw_error_to_str(fw_error));
+        return 1;
+    }
+
+    object_property_set_int(OBJECT(sev), start->handle, "handle",
+                            &error_abort);
+    sev_set_guest_state(SEV_STATE_LUPDATE);
+
+    g_free(start);
+    g_free(session);
+    g_free(dh_cert);
+
+    return 0;
 }
 
 void *
@@ -438,6 +520,13 @@ sev_guest_init(const char *id)
                      __func__, ret, fw_error, fw_error_to_str(fw_error));
         goto err;
     }
+
+    ret = sev_launch_start(s);
+    if (ret) {
+        error_report("%s: failed to create encryption context", __func__);
+        goto err;
+    }
+
 
     me_mask = (1UL << cbitpos);
     x86_reduced_phys_bits = reduced_phys_bits;
