@@ -723,5 +723,15 @@ MemoryInfo *qmp_query_memory_size_summary(Error **errp)
 
 SevInfo *qmp_query_sev(Error **errp)
 {
-    return NULL;
+    SevInfo *info = g_malloc0(sizeof(*info));
+
+    info->enabled = sev_enabled();
+    if (info->enabled) {
+        sev_get_fw_version(&info->api_major,
+                           &info->api_minor, &info->build_id);
+        sev_get_policy(&info->policy);
+        info->state = sev_get_current_state();
+    }
+
+    return info;
 }
