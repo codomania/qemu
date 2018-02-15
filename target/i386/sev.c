@@ -20,6 +20,7 @@
 #include "sysemu/sysemu.h"
 #include "trace.h"
 #include "qapi-event.h"
+#include "migration/blocker.h"
 
 #include <sys/ioctl.h>
 #include <linux/psp-sev.h>
@@ -35,6 +36,7 @@ static uint32_t x86_cbitpos;
 static uint32_t x86_reduced_phys_bits;
 static SEVState *sev_state;
 static MemoryRegionRAMReadWriteOps  sev_ops;
+static Error *sev_mig_blocker;
 
 static SevState current_sev_guest_state = SEV_STATE_UNINIT;
 
@@ -622,6 +624,7 @@ static void
 sev_launch_finish(SEVState *s)
 {
     int ret, error;
+    Error *local_err = NULL;
 
     trace_kvm_sev_launch_finish();
     ret = sev_ioctl(KVM_SEV_LAUNCH_FINISH, 0, &error);
@@ -632,6 +635,16 @@ sev_launch_finish(SEVState *s)
     }
 
     sev_set_guest_state(SEV_STATE_RUNNING);
+
+    /* add migration blocker */
+    error_setg(&sev_mig_blocker,
+               "SEV: Migration is not implemented");
+    ret = migrate_add_blocker(sev_mig_blocker, &local_err);
+    if (local_err) {
+        error_report_err(local_err);
+        error_free(sev_mig_blocker);
+        exit(1);
+    }
 }
 
 static void
