@@ -437,6 +437,22 @@ sev_get_fw_version(uint8_t *major, uint8_t *minor, uint8_t *build)
 void
 sev_get_policy(uint32_t *policy)
 {
+    struct kvm_sev_guest_status status = {};
+    int r, err;
+
+    if (current_sev_guest_state == SEV_STATE_UNINIT) {
+        return;
+    }
+
+    r = sev_ioctl(KVM_SEV_GUEST_STATUS, &status, &err);
+    if (r) {
+        error_report("%s: failed to get platform status ret=%d "
+                     "fw_error='%d: %s'", __func__, r, err,
+                     fw_error_to_str(err));
+        return;
+    }
+
+    *policy = status.policy;
 }
 
 static int
