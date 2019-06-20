@@ -246,6 +246,39 @@ bool kvm_memcrypt_enabled(void);
  */
 int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len);
 
+/**
+ * kvm_memcrypt_save_outgoing_buffer - encrypt the outgoing buffer
+ * and write to the wire.
+ */
+int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr, uint32_t size,
+                                    uint64_t *bytes_sent);
+
+/**
+ * kvm_memcrypt_load_incoming_buffer - read the encrypt incoming buffer and copy
+ * the buffer into the guest memory space.
+ */
+int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr);
+
+/**
+ * kvm_memcrypt_load_incoming_page_enc_bitmap: read the page encryption bitmap
+ * from the socket and pass it to the hypervisor.
+ */
+int kvm_memcrypt_load_incoming_page_enc_bitmap(QEMUFile *f);
+
+/**
+ * kvm_memcrypt_sync_page_enc_bitmap: sync the page encryption bitmap
+ * The caller is responsible to allocate/free the bitmap.
+ */
+int kvm_memcrypt_sync_page_enc_bitmap(uint8_t *host, uint64_t size,
+                                      unsigned long *bitmap);
+
+/**
+ * kvm_memcrypt_save_outgoing_page_enc_bitmap: write the page encryption bitmap
+ * on socket.
+ */
+int kvm_memcrypt_save_outgoing_page_enc_bitmap(QEMUFile *f, uint8_t *host,
+                                               uint64_t length,
+                                               unsigned long *bmap);
 
 #ifdef NEED_CPU_H
 #include "cpu.h"

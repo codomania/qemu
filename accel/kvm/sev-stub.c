@@ -24,3 +24,31 @@ void *sev_guest_init(const char *id)
 {
     return NULL;
 }
+
+int sev_save_outgoing_page(void *handle, QEMUFile *f, uint8_t *ptr,
+                           uint32_t size, uint64_t *bytes_sent)
+{
+    return 1;
+}
+
+int sev_load_incoming_page(void *handle, QEMUFile *f, uint8_t *ptr)
+{
+    return 1;
+}
+
+int sev_load_incoming_page_enc_bitmap(void *handle, QEMUFile *f)
+{
+    return 1;
+}
+
+int sev_save_outgoing_page_enc_bitmap(void *handle, QEMUFile *f,
+                                      unsigned long *bmap)
+{
+    return 1;
+}
+
+int sev_sync_page_enc_bitmap(void *handle, uint8_t *host, uint64_t size,
+                             unsigned long *bitmap)
+{
+    return 1;
+}

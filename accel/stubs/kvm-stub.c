@@ -114,6 +114,36 @@ int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len)
   return 1;
 }
 
+int kvm_memcrypt_save_outgoing_page(QEMUFile *f, uint8_t *ptr,
+                                    uint32_t size, uint64_t *bytes_sent)
+{
+    return 1;
+}
+
+int kvm_memcrypt_load_incoming_page(QEMUFile *f, uint8_t *ptr)
+{
+    return 1;
+}
+
+int kvm_memcrypt_load_incoming_page_enc_bitmap(QEMUFile *f)
+{
+    return 1;
+}
+
+int kvm_memcrypt_save_outgoing_page_enc_bitmap(QEMUFile *f, uint8_t *host,
+                                               uint64_t length,
+                                               unsigned long *bmap)
+{
+    return 1;
+}
+
+int kvm_memcrypt_sync_page_enc_bitmap(uint8_t *host, uint64_t size,
+                                      unsigned long *bitmap)
+{
+    return 1;
+}
+
+
 #ifndef CONFIG_USER_ONLY
 int kvm_irqchip_add_msi_route(KVMState *s, int vector, PCIDevice *dev)
 {
