@@ -1786,6 +1786,10 @@ static int kvm_init(MachineState *ms)
         kvm_state->memcrypt_sync_page_enc_bitmap = sev_sync_page_enc_bitmap;
         kvm_state->memcrypt_save_outgoing_page = sev_save_outgoing_page;
         kvm_state->memcrypt_load_incoming_page = sev_load_incoming_page;
+        kvm_state->memcrypt_load_incoming_page_enc_bitmap =
+            sev_load_incoming_page_enc_bitmap;
+        kvm_state->memcrypt_save_outgoing_page_enc_bitmap =
+            sev_save_outgoing_page_enc_bitmap;
     }
 
     ret = kvm_arch_init(ms, s);

@@ -78,6 +78,7 @@
 /* 0x80 is reserved in migration.h start with 0x100 next */
 #define RAM_SAVE_FLAG_COMPRESS_PAGE    0x100
 #define RAM_SAVE_FLAG_ENCRYPTED_PAGE   0x200
+#define RAM_SAVE_FLAG_PAGE_ENCRYPTED_BITMAP       0x400
 
 static inline bool is_zero_range(uint8_t *p, uint64_t size)
 {
@@ -3552,6 +3553,35 @@ out:
 }
 
 /**
+ * migration_save_page_enc_bitmap: function to send the page enc bitmap
+ *
+ * Returns zero to indicate success or negative on error
+ */
+static int migration_save_page_enc_bitmap(QEMUFile *f, RAMState *rs)
+{
+    int r;
+    RAMBlock *block;
+
+    RAMBLOCK_FOREACH_MIGRATABLE(block) {
+        /* ROM region does not encrypted data, skip sending the bitmap */
+        if (memory_region_is_rom(block->mr)) {
+            continue;
+        }
+
+        qemu_put_be64(f, RAM_SAVE_FLAG_PAGE_ENCRYPTED_BITMAP);
+        qemu_put_byte(f, strlen(block->idstr));
+        qemu_put_buffer(f, (uint8_t *)block->idstr, strlen(block->idstr));
+        r = kvm_memcrypt_save_outgoing_page_enc_bitmap(f, block->host,
+                block->max_length, block->encbmap);
+        if (r) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/**
  * ram_save_complete: function called to send the remaining amount of ram
  *
  * Returns zero to indicate success or negative on error
@@ -3594,6 +3624,10 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
 
     flush_compressed_data(rs);
     ram_control_after_iterate(f, RAM_CONTROL_FINISH);
+
+    if (kvm_memcrypt_enabled()) {
+        ret = migration_save_page_enc_bitmap(f, rs);
+    }
 
     rcu_read_unlock();
 
@@ -4343,7 +4377,8 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
 
         if (flags & (RAM_SAVE_FLAG_ZERO | RAM_SAVE_FLAG_PAGE |
                      RAM_SAVE_FLAG_COMPRESS_PAGE | RAM_SAVE_FLAG_XBZRLE |
-                     RAM_SAVE_FLAG_ENCRYPTED_PAGE)) {
+                     RAM_SAVE_FLAG_ENCRYPTED_PAGE |
+                     RAM_SAVE_FLAG_PAGE_ENCRYPTED_BITMAP)) {
             RAMBlock *block = ram_block_from_stream(f, flags);
 
             /*
@@ -4467,6 +4502,12 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
             if (kvm_memcrypt_load_incoming_page(f, host)) {
                     error_report("Failed to encrypted incoming data");
                     ret = -EINVAL;
+            }
+            break;
+        case RAM_SAVE_FLAG_PAGE_ENCRYPTED_BITMAP:
+            if (kvm_memcrypt_load_incoming_page_enc_bitmap(f)) {
+                error_report("Failed to load page enc bitmap");
+                ret = -EINVAL;
             }
             break;
         case RAM_SAVE_FLAG_EOS:

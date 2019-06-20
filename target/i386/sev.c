@@ -896,6 +896,8 @@ int sev_sync_page_enc_bitmap(void *handle, uint8_t *host, uint64_t size,
         return 1;
     }
 
+    trace_kvm_sev_sync_page_enc_bitmap(base_gpa, size);
+
     e.enc_bitmap = bitmap;
     e.start = base_gpa >> TARGET_PAGE_BITS;
     e.num_pages = pages;
@@ -1214,6 +1216,60 @@ int sev_load_incoming_page(void *handle, QEMUFile *f, uint8_t *ptr)
     }
 
     return sev_receive_update_data(f, ptr);
+}
+
+int sev_load_incoming_page_enc_bitmap(void *handle, QEMUFile *f)
+{
+    void *bmap;
+    unsigned long pages, length;
+    unsigned long bmap_size, base_gpa;
+    struct kvm_page_enc_bitmap e = {};
+
+    base_gpa = qemu_get_be64(f);
+    length = qemu_get_be64(f);
+    pages = length >> TARGET_PAGE_BITS;
+
+    bmap_size = BITS_TO_LONGS(pages) * sizeof(unsigned long);
+    bmap = g_malloc0(bmap_size);
+    qemu_get_buffer(f, (uint8_t *)bmap, bmap_size);
+
+    trace_kvm_sev_load_page_enc_bitmap(base_gpa, length);
+
+    e.start = base_gpa >> TARGET_PAGE_BITS;
+    e.num_pages = pages;
+    e.enc_bitmap = bmap;
+    if (kvm_vm_ioctl(kvm_state, KVM_SET_PAGE_ENC_BITMAP, &e) == -1) {
+        error_report("KVM_SET_PAGE_ENC_BITMAP ioctl failed %d", errno);
+        g_free(bmap);
+        return 1;
+    }
+
+    g_free(bmap);
+
+    return 0;
+}
+
+int sev_save_outgoing_page_enc_bitmap(void *handle, QEMUFile *f,
+                                      uint8_t *host, uint64_t length,
+                                      unsigned long *bmap)
+{
+    int r;
+    unsigned long base_gpa;
+    unsigned long pages = length >> TARGET_PAGE_BITS;
+    unsigned long bmap_sz = BITS_TO_LONGS(pages) * sizeof(unsigned long);
+
+    r = kvm_physical_memory_addr_from_host(kvm_state, host, &base_gpa);
+    if (!r) {
+        return 1;
+    }
+
+    trace_kvm_sev_save_page_enc_bitmap(base_gpa, length);
+
+    qemu_put_be64(f, base_gpa);
+    qemu_put_be64(f, length);
+    qemu_put_buffer(f, (uint8_t *)bmap, bmap_sz);
+
+    return 0;
 }
 
 static void
