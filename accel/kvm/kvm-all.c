@@ -1783,6 +1783,7 @@ static int kvm_init(MachineState *ms)
         }
 
         kvm_state->memcrypt_encrypt_data = sev_encrypt_data;
+        kvm_state->memcrypt_sync_page_enc_bitmap = sev_sync_page_enc_bitmap;
     }
 
     ret = kvm_arch_init(ms, s);

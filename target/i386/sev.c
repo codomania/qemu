@@ -819,6 +819,33 @@ sev_encrypt_data(void *handle, uint8_t *ptr, uint64_t len)
     return 0;
 }
 
+int sev_sync_page_enc_bitmap(void *handle, uint8_t *host, uint64_t size,
+                            unsigned long *bitmap)
+{
+    int r;
+    unsigned long base_gpa;
+    KVMState *s = kvm_state;
+    struct kvm_page_enc_bitmap e = {};
+    unsigned long pages = size >> TARGET_PAGE_BITS;
+
+    r = kvm_physical_memory_addr_from_host(kvm_state, host, &base_gpa);
+    if (!r) {
+        return 1;
+    }
+
+    e.enc_bitmap = bitmap;
+    e.start = base_gpa >> TARGET_PAGE_BITS;
+    e.num_pages = pages;
+
+    if (kvm_vm_ioctl(s, KVM_GET_PAGE_ENC_BITMAP, &e) == -1) {
+        error_report("%s: get page_enc bitmap start 0x%llx pages 0x%llx",
+                __func__, e.start, e.num_pages);
+        return 1;
+    }
+
+    return 0;
+}
+
 static void
 sev_register_types(void)
 {
